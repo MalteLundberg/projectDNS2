@@ -1,0 +1,142 @@
+:root {
+  color: #e5eef7;
+  background: #09111f;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(55, 100, 180, 0.32), transparent 32%),
+    linear-gradient(180deg, #0b1324 0%, #09111f 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.app-shell {
+  width: min(960px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 4rem 0 5rem;
+}
+
+.hero {
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  color: #78a8ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+}
+
+h1 {
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(2.5rem, 6vw, 4.75rem);
+  line-height: 0.95;
+}
+
+.intro {
+  max-width: 60ch;
+  margin: 1rem 0 0;
+  color: #b8c7dc;
+}
+
+.intro code,
+.status-card code {
+  background: rgba(120, 168, 255, 0.12);
+  border: 1px solid rgba(120, 168, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.status-card {
+  padding: 1.25rem;
+  border: 1px solid rgba(159, 183, 214, 0.16);
+  border-radius: 20px;
+  background: rgba(9, 17, 31, 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+}
+
+.status-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.status-card p {
+  margin: 0.75rem 0 0;
+  color: #b8c7dc;
+}
+
+.status-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-pill--ok {
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.16);
+}
+
+.status-pill--error {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding-top: 3rem;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}
