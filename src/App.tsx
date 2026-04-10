@@ -1,120 +1,238 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 
-type ApiStatus = {
-  ok: boolean
-  service: string
-  message: string
-  timestamp?: string
+type Organization = {
+  id: string
+  name: string
+  slug: string
+  createdAt: string
 }
 
-type StatusState = {
+type Member = {
+  id: string
+  role: 'admin' | 'user'
+  userId: string
+  userName: string
+  userEmail: string
+  createdAt: string
+}
+
+type Invitation = {
+  id: string
+  organizationId: string
+  email: string
+  role: 'admin' | 'user'
+  status: 'pending' | 'accepted' | 'revoked'
+  createdAt: string
+}
+
+type DashboardState = {
   loading: boolean
-  data?: ApiStatus
   error?: string
+  organizations: Organization[]
+  members: Member[]
+  invitations: Invitation[]
 }
 
-const initialState: StatusState = {
-  loading: true,
-}
-
-async function loadStatus(endpoint: string): Promise<ApiStatus> {
-  const response = await fetch(endpoint)
+async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, init)
+  const data = (await response.json()) as T & { error?: string }
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`)
+    throw new Error(data.error ?? `Request failed with status ${response.status}`)
   }
 
-  return (await response.json()) as ApiStatus
-}
-
-function StatusCard({
-  title,
-  state,
-}: {
-  title: string
-  state: StatusState
-}) {
-  const statusLabel = state.loading
-    ? 'Checking...'
-    : state.data?.ok
-      ? 'OK'
-      : 'Error'
-
-  return (
-    <section className="status-card">
-      <div className="status-card__header">
-        <h2>{title}</h2>
-        <span
-          className={`status-pill ${state.data?.ok ? 'status-pill--ok' : 'status-pill--error'}`}
-        >
-          {statusLabel}
-        </span>
-      </div>
-
-      {state.loading ? <p>Kontrollerar endpoint...</p> : null}
-      {state.error ? <p>{state.error}</p> : null}
-      {state.data ? (
-        <>
-          <p>{state.data.message}</p>
-          {state.data.timestamp ? <code>{state.data.timestamp}</code> : null}
-        </>
-      ) : null}
-    </section>
-  )
+  return data
 }
 
 function App() {
-  const [health, setHealth] = useState<StatusState>(initialState)
-  const [dbCheck, setDbCheck] = useState<StatusState>(initialState)
+  const [state, setState] = useState<DashboardState>({
+    loading: true,
+    organizations: [],
+    members: [],
+    invitations: [],
+  })
+  const [inviteEmail, setInviteEmail] = useState('new.user@example.com')
+  const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
+  const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    let active = true
+  async function loadDashboard() {
+    setState((current) => ({ ...current, loading: true, error: undefined }))
 
-    async function runChecks() {
-      const [healthResult, dbResult] = await Promise.allSettled([
-        loadStatus('/api/health'),
-        loadStatus('/api/db-check'),
-      ])
+    try {
+      const organizationsResponse = await requestJson<{ ok: boolean; organizations: Organization[] }>(
+        '/api/organizations',
+      )
 
-      if (!active) {
+      const organizations = organizationsResponse.organizations
+      const firstOrganization = organizations[0]
+
+      if (!firstOrganization) {
+        setState({ loading: false, organizations: [], members: [], invitations: [] })
         return
       }
 
-      setHealth(
-        healthResult.status === 'fulfilled'
-          ? { loading: false, data: healthResult.value }
-          : { loading: false, error: healthResult.reason instanceof Error ? healthResult.reason.message : 'Unknown error' },
-      )
+      const [membersResponse, invitationsResponse] = await Promise.all([
+        requestJson<{ ok: boolean; members: Member[] }>(
+          `/api/organizations/${firstOrganization.id}/members`,
+        ),
+        requestJson<{ ok: boolean; invitations: Invitation[] }>(
+          `/api/invitations?organizationId=${firstOrganization.id}`,
+        ),
+      ])
 
-      setDbCheck(
-        dbResult.status === 'fulfilled'
-          ? { loading: false, data: dbResult.value }
-          : { loading: false, error: dbResult.reason instanceof Error ? dbResult.reason.message : 'Unknown error' },
-      )
+      setState({
+        loading: false,
+        organizations,
+        members: membersResponse.members,
+        invitations: invitationsResponse.invitations,
+      })
+    } catch (error) {
+      setState({
+        loading: false,
+        organizations: [],
+        members: [],
+        invitations: [],
+        error: error instanceof Error ? error.message : 'Unknown dashboard error',
+      })
     }
+  }
 
-    void runChecks()
-
-    return () => {
-      active = false
-    }
+  useEffect(() => {
+    void loadDashboard()
   }, [])
+
+  async function handleInviteSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!state.organizations[0]) {
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      await requestJson<{ ok: boolean; invitation: Invitation }>('/api/invitations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: state.organizations[0].id,
+          email: inviteEmail,
+          role: inviteRole,
+          invitedByEmail: 'test@example.com',
+        }),
+      })
+
+      await loadDashboard()
+      setInviteEmail('another.user@example.com')
+      setInviteRole('user')
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unknown invitation error',
+      }))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const currentOrganization = state.organizations[0]
 
   return (
     <main className="app-shell">
       <div className="hero">
-        <p className="eyebrow">Vite + TypeScript + Vercel Serverless</p>
-        <h1>Frontend till backend till Neon PostgreSQL</h1>
+        <p className="eyebrow">Multitenant foundation</p>
+        <h1>Organizations, members and invitations</h1>
         <p className="intro">
-          Minsta fungerande version som verifierar att frontend kan anropa serverless-
-          endpoints och att backend kan nå Neon via <code>DATABASE_URL</code>.
+          Enkel dashboard ovanpa Neon PostgreSQL med Drizzle-migrationer och seedad
+          testdata. Ingen auth eller RLS anvaends i detta steg.
         </p>
       </div>
 
-      <div className="status-grid">
-        <StatusCard title="Health status" state={health} />
-        <StatusCard title="DB status" state={dbCheck} />
-      </div>
+      {state.error ? <p className="banner banner--error">{state.error}</p> : null}
+      {state.loading ? <p className="banner">Laddar dashboard...</p> : null}
+
+      {currentOrganization ? (
+        <div className="dashboard-grid">
+          <section className="panel panel--highlight">
+            <p className="panel__label">Organization</p>
+            <h2>{currentOrganization.name}</h2>
+            <p>Slug: {currentOrganization.slug}</p>
+            <code>{currentOrganization.id}</code>
+          </section>
+
+          <section className="panel">
+            <div className="panel__header">
+              <div>
+                <p className="panel__label">Members</p>
+                <h2>{state.members.length}</h2>
+              </div>
+            </div>
+            <ul className="list">
+              {state.members.map((member) => (
+                <li key={member.id} className="list__item">
+                  <div>
+                    <strong>{member.userName}</strong>
+                    <p>{member.userEmail}</p>
+                  </div>
+                  <span className="pill">{member.role}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="panel">
+            <div className="panel__header">
+              <div>
+                <p className="panel__label">Invitations</p>
+                <h2>{state.invitations.length}</h2>
+              </div>
+            </div>
+            <ul className="list">
+              {state.invitations.map((invitation) => (
+                <li key={invitation.id} className="list__item">
+                  <div>
+                    <strong>{invitation.email}</strong>
+                    <p>{invitation.status}</p>
+                  </div>
+                  <span className="pill">{invitation.role}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="panel">
+            <p className="panel__label">Create invitation</p>
+            <h2>Invite member</h2>
+            <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
+              <label>
+                Email
+                <input
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  type="email"
+                  required
+                />
+              </label>
+
+              <label>
+                Role
+                <select
+                  value={inviteRole}
+                  onChange={(event) => setInviteRole(event.target.value as 'admin' | 'user')}
+                >
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Saving...' : 'Create invitation'}
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }

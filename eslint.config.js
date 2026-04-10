@@ -21,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['api/**/*.ts', 'lib/**/*.ts', 'vite.config.ts'],
+    files: ['api/**/*.ts', 'lib/**/*.ts', 'db/**/*.ts', 'server/**/*.ts', 'vite.config.ts', 'drizzle.config.ts'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.node,

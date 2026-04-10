@@ -5,6 +5,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import healthHandler from '../api/health.ts'
 import dbCheckHandler from '../api/db-check.ts'
+import invitationsHandler from '../api/invitations/index.ts'
+import organizationMembersHandler from '../api/organizations/[id]/members.ts'
+import organizationsHandler from '../api/organizations/index.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -16,30 +19,53 @@ type JsonResponse = {
   payload: unknown
 }
 
+type MockRequest = {
+  method: string
+  query: Record<string, string | string[]>
+  body?: unknown
+}
+
+type LocalHandler = (
+  req: MockRequest,
+  res: { status: (code: number) => { json: (body: unknown) => void } },
+) => void | Promise<void>
+
 function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown) {
   res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(payload))
 }
 
+async function parseBody(req: http.IncomingMessage) {
+  const chunks: Buffer[] = []
+
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+
+  if (chunks.length === 0) {
+    return undefined
+  }
+
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+}
+
 async function runHandler(
-  handler: (req: unknown, res: { status: (code: number) => { json: (body: unknown) => void } }) => void | Promise<void>,
+  handler: LocalHandler,
+  req: MockRequest,
 ): Promise<JsonResponse> {
   const response: JsonResponse = { statusCode: 200, payload: {} }
 
-  await handler(
-    {},
-    {
-      status(code: number) {
-        response.statusCode = code
+  await handler(req, {
+    status(code: number) {
+      response.statusCode = code
 
-        return {
-          json(body: unknown) {
-            response.payload = body
-          },
-        }
-      },
+      return {
+        json(body: unknown) {
+          response.payload = body
+        },
+      }
     },
-  )
+  })
 
   return response
 }
@@ -55,21 +81,58 @@ function getContentType(filePath: string): string {
 }
 
 const server = http.createServer(async (req, res) => {
-  const requestPath = req.url ?? '/'
+  const parsedUrl = new URL(req.url ?? '/', 'http://127.0.0.1:3000')
+  const pathname = parsedUrl.pathname
+  const query = Object.fromEntries(parsedUrl.searchParams.entries())
+  const method = req.method ?? 'GET'
 
-  if (requestPath === '/api/health') {
-    const response = await runHandler(healthHandler)
+  if (pathname === '/api/health') {
+    const response = await runHandler(healthHandler as unknown as LocalHandler, { method, query })
     sendJson(res, response.statusCode, response.payload)
     return
   }
 
-  if (requestPath === '/api/db-check') {
-    const response = await runHandler(dbCheckHandler)
+  if (pathname === '/api/db-check') {
+    const response = await runHandler(dbCheckHandler as unknown as LocalHandler, { method, query })
     sendJson(res, response.statusCode, response.payload)
     return
   }
 
-  const relativePath = requestPath === '/' ? 'index.html' : requestPath.slice(1)
+  if (pathname === '/api/organizations') {
+    const response = await runHandler(organizationsHandler as unknown as LocalHandler, {
+      method,
+      query,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  const organizationMembersMatch = pathname.match(/^\/api\/organizations\/([^/]+)\/members$/)
+
+  if (organizationMembersMatch) {
+    const response = await runHandler(organizationMembersHandler as unknown as LocalHandler, {
+      method,
+      query: {
+        ...query,
+        id: organizationMembersMatch[1],
+      },
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  if (pathname === '/api/invitations') {
+    const response = await runHandler(invitationsHandler as unknown as LocalHandler, {
+      method,
+      query,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  const relativePath = pathname === '/' ? 'index.html' : pathname.slice(1)
   const filePath = path.join(distDir, relativePath)
   const safePath = path.normalize(filePath)
 
