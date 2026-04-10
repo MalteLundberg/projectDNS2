@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Pool } from 'pg'
+import { getRequestContext } from '../../lib/request-context.ts'
 
 export const config = {
   runtime: 'nodejs',
@@ -33,14 +34,11 @@ function getSingleQueryValue(value: string | string[] | undefined) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getPool()
+    const context = await getRequestContext(req)
 
     if (req.method === 'GET') {
-      const organizationId = String(getSingleQueryValue(req.query.organizationId)).trim()
-
-      if (!organizationId) {
-        res.status(400).json({ ok: false, error: 'organizationId is required' })
-        return
-      }
+      const organizationId =
+        String(getSingleQueryValue(req.query.organizationId)).trim() || context.activeOrganization.id
 
       const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
         organizationId,
@@ -65,12 +63,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { organizationId, email, role, invitedByEmail } = req.body ?? {}
+      const { organizationId, email, role } = req.body ?? {}
 
-      if (!organizationId || !email || !role || !invitedByEmail) {
+      if (!email || !role) {
         res.status(400).json({
           ok: false,
-          error: 'organizationId, email, role and invitedByEmail are required',
+          error: 'email and role are required',
         })
         return
       }
@@ -80,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const normalizedOrganizationId = String(organizationId).trim()
+      const normalizedOrganizationId = String(organizationId ?? context.activeOrganization.id).trim()
       const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
         normalizedOrganizationId,
       ])
@@ -90,21 +88,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const invitedByUserResult = await db.query(
-        'select id from users where email = $1 limit 1',
-        [String(invitedByEmail).trim()],
-      )
-
-      const invitedByUser = invitedByUserResult.rows[0]
-
-      if (!invitedByUser) {
-        res.status(400).json({ ok: false, error: 'Inviter user not found' })
-        return
-      }
-
       const inviterMembershipResult = await db.query(
         'select id from organization_members where organization_id = $1 and user_id = $2 limit 1',
-        [normalizedOrganizationId, invitedByUser.id],
+        [normalizedOrganizationId, context.currentUser.id],
       )
 
       if (inviterMembershipResult.rowCount === 0) {
@@ -117,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          values ($1, $2, $3, 'pending', $4)
          returning id, organization_id as "organizationId", email, role, status,
                    invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
-        [normalizedOrganizationId, String(email).trim(), role, invitedByUser.id],
+        [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
       )
 
       res.status(201).json({ ok: true, invitation: invitationResult.rows[0] })

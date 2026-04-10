@@ -8,6 +8,7 @@ import dbCheckHandler from '../api/db-check.ts'
 import invitationsHandler from '../api/invitations/index.ts'
 import organizationMembersHandler from '../api/organizations/[id]/members.ts'
 import organizationsHandler from '../api/organizations/index.ts'
+import sessionHandler from '../api/session.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -23,6 +24,7 @@ type MockRequest = {
   method: string
   query: Record<string, string | string[]>
   body?: unknown
+  headers: Record<string, string | string[] | undefined>
 }
 
 type LocalHandler = (
@@ -70,6 +72,13 @@ async function runHandler(
   return response
 }
 
+function getHeaders(req: http.IncomingMessage) {
+  return {
+    'x-user-email': req.headers['x-user-email'] ?? 'test@example.com',
+    'x-organization-id': req.headers['x-organization-id'],
+  }
+}
+
 function getContentType(filePath: string): string {
   if (filePath.endsWith('.html')) return 'text/html; charset=utf-8'
   if (filePath.endsWith('.js')) return 'text/javascript; charset=utf-8'
@@ -85,15 +94,22 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname
   const query = Object.fromEntries(parsedUrl.searchParams.entries())
   const method = req.method ?? 'GET'
+  const headers = getHeaders(req)
 
   if (pathname === '/api/health') {
-    const response = await runHandler(healthHandler as unknown as LocalHandler, { method, query })
+    const response = await runHandler(healthHandler as unknown as LocalHandler, { method, query, headers })
     sendJson(res, response.statusCode, response.payload)
     return
   }
 
   if (pathname === '/api/db-check') {
-    const response = await runHandler(dbCheckHandler as unknown as LocalHandler, { method, query })
+    const response = await runHandler(dbCheckHandler as unknown as LocalHandler, { method, query, headers })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  if (pathname === '/api/session') {
+    const response = await runHandler(sessionHandler as unknown as LocalHandler, { method, query, headers })
     sendJson(res, response.statusCode, response.payload)
     return
   }
@@ -102,6 +118,7 @@ const server = http.createServer(async (req, res) => {
     const response = await runHandler(organizationsHandler as unknown as LocalHandler, {
       method,
       query,
+      headers,
       body: method === 'POST' ? await parseBody(req) : undefined,
     })
     sendJson(res, response.statusCode, response.payload)
@@ -113,6 +130,7 @@ const server = http.createServer(async (req, res) => {
   if (organizationMembersMatch) {
     const response = await runHandler(organizationMembersHandler as unknown as LocalHandler, {
       method,
+      headers,
       query: {
         ...query,
         id: organizationMembersMatch[1],
@@ -126,6 +144,7 @@ const server = http.createServer(async (req, res) => {
     const response = await runHandler(invitationsHandler as unknown as LocalHandler, {
       method,
       query,
+      headers,
       body: method === 'POST' ? await parseBody(req) : undefined,
     })
     sendJson(res, response.statusCode, response.payload)

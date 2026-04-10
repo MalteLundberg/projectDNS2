@@ -8,6 +8,26 @@ type Organization = {
   createdAt: string
 }
 
+type Membership = {
+  organizationId: string
+  role: 'admin' | 'user'
+  organizationName: string
+  organizationSlug: string
+}
+
+type CurrentUser = {
+  id: string
+  email: string
+  name: string
+}
+
+type ActiveOrganization = {
+  id: string
+  name: string
+  slug: string
+  role: 'admin' | 'user'
+}
+
 type Member = {
   id: string
   role: 'admin' | 'user'
@@ -29,9 +49,21 @@ type Invitation = {
 type DashboardState = {
   loading: boolean
   error?: string
+  currentUser?: CurrentUser
+  memberships: Membership[]
+  activeOrganization?: ActiveOrganization
   organizations: Organization[]
   members: Member[]
   invitations: Invitation[]
+}
+
+const CURRENT_USER_EMAIL = 'test@example.com'
+
+function createContextHeaders(organizationId?: string) {
+  return {
+    'x-user-email': CURRENT_USER_EMAIL,
+    ...(organizationId ? { 'x-organization-id': organizationId } : {}),
+  }
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -48,48 +80,63 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
 function App() {
   const [state, setState] = useState<DashboardState>({
     loading: true,
+    memberships: [],
     organizations: [],
     members: [],
     invitations: [],
   })
+  const [activeOrganizationId, setActiveOrganizationId] = useState('')
   const [inviteEmail, setInviteEmail] = useState('new.user@example.com')
   const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
   const [submitting, setSubmitting] = useState(false)
 
-  async function loadDashboard() {
+  async function loadDashboard(nextOrganizationId?: string) {
     setState((current) => ({ ...current, loading: true, error: undefined }))
 
     try {
-      const organizationsResponse = await requestJson<{ ok: boolean; organizations: Organization[] }>(
-        '/api/organizations',
-      )
+      const sessionResponse = await requestJson<{
+        ok: boolean
+        currentUser: CurrentUser
+        memberships: Membership[]
+        activeOrganization: ActiveOrganization
+      }>('/api/session', {
+        headers: createContextHeaders(nextOrganizationId),
+      })
 
-      const organizations = organizationsResponse.organizations
-      const firstOrganization = organizations[0]
+      const activeOrganization = sessionResponse.activeOrganization
 
-      if (!firstOrganization) {
-        setState({ loading: false, organizations: [], members: [], invitations: [] })
-        return
-      }
-
-      const [membersResponse, invitationsResponse] = await Promise.all([
+      const [organizationsResponse, membersResponse, invitationsResponse] = await Promise.all([
+        requestJson<{ ok: boolean; organizations: Organization[] }>('/api/organizations', {
+          headers: createContextHeaders(activeOrganization.id),
+        }),
         requestJson<{ ok: boolean; members: Member[] }>(
-          `/api/organizations/${firstOrganization.id}/members`,
+          `/api/organizations/${activeOrganization.id}/members`,
+          {
+            headers: createContextHeaders(activeOrganization.id),
+          },
         ),
         requestJson<{ ok: boolean; invitations: Invitation[] }>(
-          `/api/invitations?organizationId=${firstOrganization.id}`,
+          `/api/invitations?organizationId=${activeOrganization.id}`,
+          {
+            headers: createContextHeaders(activeOrganization.id),
+          },
         ),
       ])
 
+      setActiveOrganizationId(activeOrganization.id)
       setState({
         loading: false,
-        organizations,
+        currentUser: sessionResponse.currentUser,
+        memberships: sessionResponse.memberships,
+        activeOrganization,
+        organizations: organizationsResponse.organizations,
         members: membersResponse.members,
         invitations: invitationsResponse.invitations,
       })
     } catch (error) {
       setState({
         loading: false,
+        memberships: [],
         organizations: [],
         members: [],
         invitations: [],
@@ -105,7 +152,7 @@ function App() {
   async function handleInviteSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!state.organizations[0]) {
+    if (!state.activeOrganization) {
       return
     }
 
@@ -114,16 +161,17 @@ function App() {
     try {
       await requestJson<{ ok: boolean; invitation: Invitation }>('/api/invitations', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...createContextHeaders(state.activeOrganization.id),
+        },
         body: JSON.stringify({
-          organizationId: state.organizations[0].id,
           email: inviteEmail,
           role: inviteRole,
-          invitedByEmail: 'test@example.com',
         }),
       })
 
-      await loadDashboard()
+      await loadDashboard(state.activeOrganization.id)
       setInviteEmail('another.user@example.com')
       setInviteRole('user')
     } catch (error) {
@@ -136,29 +184,69 @@ function App() {
     }
   }
 
-  const currentOrganization = state.organizations[0]
+  async function handleOrganizationChange(nextOrganizationId: string) {
+    setActiveOrganizationId(nextOrganizationId)
+    await loadDashboard(nextOrganizationId)
+  }
 
   return (
     <main className="app-shell">
       <div className="hero">
-        <p className="eyebrow">Multitenant foundation</p>
-        <h1>Organizations, members and invitations</h1>
+        <p className="eyebrow">Auth and tenant context foundation</p>
+        <h1>Current user and active organization</h1>
         <p className="intro">
-          Enkel dashboard ovanpa Neon PostgreSQL med Drizzle-migrationer och seedad
-          testdata. Ingen auth eller RLS anvaends i detta steg.
+          Enkel request-context med current user och aktiv organization via headers, redo att
+          ersattas av riktig auth och RLS senare.
         </p>
       </div>
 
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
       {state.loading ? <p className="banner">Laddar dashboard...</p> : null}
 
-      {currentOrganization ? (
+      {state.currentUser && state.activeOrganization ? (
         <div className="dashboard-grid">
           <section className="panel panel--highlight">
-            <p className="panel__label">Organization</p>
-            <h2>{currentOrganization.name}</h2>
-            <p>Slug: {currentOrganization.slug}</p>
-            <code>{currentOrganization.id}</code>
+            <p className="panel__label">Current user</p>
+            <h2>{state.currentUser.name}</h2>
+            <p>{state.currentUser.email}</p>
+            <code>{state.currentUser.id}</code>
+          </section>
+
+          <section className="panel panel--highlight">
+            <p className="panel__label">Active organization</p>
+            <h2>{state.activeOrganization.name}</h2>
+            <p>Role: {state.activeOrganization.role}</p>
+            <label className="inline-field">
+              <span>Choose organization</span>
+              <select
+                value={activeOrganizationId}
+                onChange={(event) => void handleOrganizationChange(event.target.value)}
+              >
+                {state.memberships.map((membership) => (
+                  <option key={membership.organizationId} value={membership.organizationId}>
+                    {membership.organizationName} ({membership.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="panel">
+            <p className="panel__label">Organizations in context</p>
+            <h2>{state.organizations.length}</h2>
+            <ul className="list">
+              {state.organizations.map((organization) => (
+                <li key={organization.id} className="list__item">
+                  <div>
+                    <strong>{organization.name}</strong>
+                    <p>{organization.slug}</p>
+                  </div>
+                  <span className="pill">
+                    {organization.id === state.activeOrganization?.id ? 'active' : 'available'}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section className="panel">

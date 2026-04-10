@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Pool } from 'pg'
+import { getRequestContext } from '../../../lib/request-context.ts'
 
 export const config = {
   runtime: 'nodejs',
@@ -38,10 +39,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const db = getPool()
-    const organizationId = String(getSingleQueryValue(req.query.id)).trim()
+    const context = await getRequestContext(req)
+    const organizationId = String(getSingleQueryValue(req.query.id)).trim() || context.activeOrganization.id
 
     if (!organizationId) {
       res.status(400).json({ ok: false, error: 'Organization id is required' })
+      return
+    }
+
+    if (!context.memberships.some((membership) => membership.organizationId === organizationId)) {
+      res.status(403).json({ ok: false, error: 'Access denied for organization' })
       return
     }
 

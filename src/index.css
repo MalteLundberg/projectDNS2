@@ -233,9 +233,17 @@ h1 {
   color: #b8c7dc;
 }
 
+.inline-field {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  color: #b8c7dc;
+}
+
 .form input,
 .form select,
-.form button {
+.form button,
+.inline-field select {
   border-radius: 12px;
   border: 1px solid rgba(159, 183, 214, 0.18);
   background: rgba(6, 12, 23, 0.8);

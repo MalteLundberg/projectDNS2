@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Pool } from 'pg'
+import { getRequestContext } from '../../lib/request-context.ts'
 
 export const config = {
   runtime: 'nodejs',
@@ -25,12 +26,15 @@ function getPool() {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getPool()
+    const context = await getRequestContext(req)
 
     if (req.method === 'GET') {
       const result = await db.query(
         `select id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"
          from organizations
+         where id = any($1::uuid[])
          order by created_at asc`,
+        [context.memberships.map((membership) => membership.organizationId)],
       )
 
       res.status(200).json({ ok: true, organizations: result.rows })
@@ -38,23 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { name, slug, createdByEmail } = req.body ?? {}
+      const { name, slug } = req.body ?? {}
 
-      if (!name || !slug || !createdByEmail) {
+      if (!name || !slug) {
         res.status(400).json({
           ok: false,
-          error: 'name, slug and createdByEmail are required',
+          error: 'name and slug are required',
         })
-        return
-      }
-
-      const createdByUserResult = await db.query('select id from users where email = $1 limit 1', [
-        String(createdByEmail).trim(),
-      ])
-      const createdByUser = createdByUserResult.rows[0]
-
-      if (!createdByUser) {
-        res.status(400).json({ ok: false, error: 'Creator user not found' })
         return
       }
 
@@ -73,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `insert into organizations (name, slug, created_by_user_id)
          values ($1, $2, $3)
          returning id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"`,
-        [String(name).trim(), normalizedSlug, createdByUser.id],
+        [String(name).trim(), normalizedSlug, context.currentUser.id],
       )
 
       const organization = organizationResult.rows[0]
@@ -81,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await db.query(
         `insert into organization_members (organization_id, user_id, role)
          values ($1, $2, 'admin')`,
-        [organization.id, createdByUser.id],
+        [organization.id, context.currentUser.id],
       )
 
       res.status(201).json({ ok: true, organization })
