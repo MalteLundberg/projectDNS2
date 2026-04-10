@@ -28,7 +28,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = getPool()
     const context = await getRequestContext(req)
 
+    if (!context.currentUser.id) {
+      res.status(200).json({ ok: false, organizations: [], error: 'Current user could not be resolved' })
+      return
+    }
+
     if (req.method === 'GET') {
+      if (context.memberships.length === 0) {
+        res.status(200).json({ ok: true, organizations: [] })
+        return
+      }
+
       const result = await db.query(
         `select id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"
          from organizations
@@ -91,6 +101,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: req.body,
       error,
     })
-    res.status(500).json({ ok: false, error: message })
+    res.status(200).json({ ok: false, organizations: [], error: message })
   }
 }

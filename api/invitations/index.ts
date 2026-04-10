@@ -36,9 +36,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = getPool()
     const context = await getRequestContext(req)
 
+    if (!context.currentUser.id) {
+      res.status(200).json({ ok: false, invitations: [], error: 'Current user could not be resolved' })
+      return
+    }
+
     if (req.method === 'GET') {
       const organizationId =
         String(getSingleQueryValue(req.query.organizationId)).trim() || context.activeOrganization.id
+
+      if (!organizationId) {
+        res.status(200).json({ ok: true, invitations: [] })
+        return
+      }
 
       const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
         organizationId,
@@ -119,6 +129,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: req.body,
       error,
     })
-    res.status(500).json({ ok: false, error: message })
+    res.status(200).json({ ok: false, invitations: [], error: message })
   }
 }

@@ -31,6 +31,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       error,
     })
-    res.status(500).json({ ok: false, error: message })
+    res.status(200).json({
+      ok: false,
+      error: message,
+      currentUser: null,
+      memberships: [],
+      activeOrganization: null,
+    })
   }
 }

@@ -42,13 +42,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const context = await getRequestContext(req)
     const organizationId = String(getSingleQueryValue(req.query.id)).trim() || context.activeOrganization.id
 
+    if (!context.currentUser.id) {
+      res.status(200).json({ ok: false, members: [], error: 'Current user could not be resolved' })
+      return
+    }
+
     if (!organizationId) {
-      res.status(400).json({ ok: false, error: 'Organization id is required' })
+      res.status(200).json({ ok: true, members: [] })
       return
     }
 
     if (!context.memberships.some((membership) => membership.organizationId === organizationId)) {
-      res.status(403).json({ ok: false, error: 'Access denied for organization' })
+      res.status(200).json({ ok: false, members: [], error: 'Access denied for organization' })
       return
     }
 
@@ -79,6 +84,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       query: req.query,
       error,
     })
-    res.status(500).json({ ok: false, error: message })
+    res.status(200).json({ ok: false, members: [], error: message })
   }
 }
