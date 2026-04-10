@@ -1,35 +1,66 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import {
-  createInvitation,
-  getOrganizationById,
-  getOrganizationMember,
-  getUserByEmail,
-  listInvitations,
-} from '../../lib/database.ts'
+import { Pool } from 'pg'
 
 export const config = {
   runtime: 'nodejs',
 }
 
+let pool: Pool | undefined
+
+function getPool() {
+  const databaseUrl = process.env.DATABASE_URL
+
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is not set')
+  }
+
+  pool ??= new Pool({
+    connectionString: databaseUrl,
+    ssl: { rejectUnauthorized: false },
+  })
+
+  return pool
+}
+
+function getSingleQueryValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? ''
+  }
+
+  return value ?? ''
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    const db = getPool()
+
     if (req.method === 'GET') {
-      const organizationId = String(req.query.organizationId ?? '')
+      const organizationId = String(getSingleQueryValue(req.query.organizationId)).trim()
 
       if (!organizationId) {
         res.status(400).json({ ok: false, error: 'organizationId is required' })
         return
       }
 
-      const organization = await getOrganizationById(organizationId)
+      const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
+        organizationId,
+      ])
 
-      if (!organization) {
+      if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'Organization not found' })
         return
       }
 
-      const invitations = await listInvitations(organizationId)
-      res.status(200).json({ ok: true, invitations })
+      const invitationsResult = await db.query(
+        `select id, organization_id as "organizationId", email, role, status,
+                invited_by_user_id as "invitedByUserId", created_at as "createdAt"
+         from invitations
+         where organization_id = $1
+         order by created_at desc`,
+        [organizationId],
+      )
+
+      res.status(200).json({ ok: true, invitations: invitationsResult.rows })
       return
     }
 
@@ -49,44 +80,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const organization = await getOrganizationById(String(organizationId))
+      const normalizedOrganizationId = String(organizationId).trim()
+      const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
+        normalizedOrganizationId,
+      ])
 
-      if (!organization) {
+      if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'Organization not found' })
         return
       }
 
-      const invitedByUser = await getUserByEmail(String(invitedByEmail))
+      const invitedByUserResult = await db.query(
+        'select id from users where email = $1 limit 1',
+        [String(invitedByEmail).trim()],
+      )
+
+      const invitedByUser = invitedByUserResult.rows[0]
 
       if (!invitedByUser) {
         res.status(400).json({ ok: false, error: 'Inviter user not found' })
         return
       }
 
-      const inviterMembership = await getOrganizationMember({
-        organizationId: String(organizationId),
-        userId: invitedByUser.id,
-      })
+      const inviterMembershipResult = await db.query(
+        'select id from organization_members where organization_id = $1 and user_id = $2 limit 1',
+        [normalizedOrganizationId, invitedByUser.id],
+      )
 
-      if (!inviterMembership) {
+      if (inviterMembershipResult.rowCount === 0) {
         res.status(403).json({ ok: false, error: 'Inviter is not a member of the organization' })
         return
       }
 
-      const invitation = await createInvitation({
-        organizationId: String(organizationId),
-        email: String(email),
-        role,
-        invitedByUserId: invitedByUser.id,
-      })
+      const invitationResult = await db.query(
+        `insert into invitations (organization_id, email, role, status, invited_by_user_id)
+         values ($1, $2, $3, 'pending', $4)
+         returning id, organization_id as "organizationId", email, role, status,
+                   invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
+        [normalizedOrganizationId, String(email).trim(), role, invitedByUser.id],
+      )
 
-      res.status(201).json({ ok: true, invitation })
+      res.status(201).json({ ok: true, invitation: invitationResult.rows[0] })
       return
     }
 
     res.status(405).json({ ok: false, error: 'Method not allowed' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown invitations error'
+    console.error('api/invitations failed', {
+      method: req.method,
+      query: req.query,
+      body: req.body,
+      error,
+    })
     res.status(500).json({ ok: false, error: message })
   }
 }
