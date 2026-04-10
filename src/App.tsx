@@ -68,6 +68,13 @@ function createContextHeaders(organizationId?: string) {
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init)
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (!contentType.includes('application/json')) {
+    const text = await response.text()
+    throw new Error(`Expected JSON but received: ${text.slice(0, 120)}`)
+  }
+
   const data = (await response.json()) as T & { error?: string }
 
   if (!response.ok) {

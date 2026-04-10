@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Pool } from 'pg'
-import { getRequestContext } from '../../lib/request-context.ts'
 
 export const config = {
   runtime: 'nodejs',
 }
 
 let pool: Pool | undefined
+const FALLBACK_USER_EMAIL = 'test@example.com'
 
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL
@@ -21,6 +21,50 @@ function getPool() {
   })
 
   return pool
+}
+
+async function getRequestContext(req: VercelRequest) {
+  const db = getPool()
+  const requestedUserEmail = String(req.headers['x-user-email'] ?? '').trim()
+  const userEmail = requestedUserEmail || FALLBACK_USER_EMAIL
+
+  const currentUserResult = await db.query('select id, email, name from users where email = $1 limit 1', [
+    userEmail,
+  ])
+  const currentUser =
+    currentUserResult.rows[0] ??
+    (
+      await db.query('select id, email, name from users where email = $1 limit 1', [
+        FALLBACK_USER_EMAIL,
+      ])
+    ).rows[0]
+
+  if (!currentUser) {
+    console.error('api/organizations could not resolve current user', {
+      requestedUserEmail,
+      fallbackUserEmail: FALLBACK_USER_EMAIL,
+    })
+
+    return {
+      currentUser: null,
+      memberships: [],
+    }
+  }
+
+  const membershipsResult = await db.query(
+    `select om.organization_id as "organizationId", om.role,
+            o.name as "organizationName", o.slug as "organizationSlug"
+     from organization_members om
+     inner join organizations o on o.id = om.organization_id
+     where om.user_id = $1
+     order by o.created_at asc`,
+    [currentUser.id],
+  )
+
+  return {
+    currentUser,
+    memberships: membershipsResult.rows,
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
