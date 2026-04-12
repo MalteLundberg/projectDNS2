@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { Pool } from 'pg'
+import { Pool, type PoolClient } from 'pg'
 
 export const config = {
   runtime: 'nodejs',
@@ -109,6 +109,30 @@ async function getRequestContext(req: VercelRequest) {
   }
 }
 
+async function withRlsContext<T>(
+  userId: string,
+  organizationId: string | null,
+  callback: (client: PoolClient) => Promise<T>,
+) {
+  const client = await getPool().connect()
+
+  try {
+    await client.query('begin')
+    await client.query("select set_config('app.current_user_id', $1, true)", [userId])
+    await client.query("select set_config('app.current_organization_id', $1, true)", [organizationId ?? ''])
+
+    const result = await callback(client)
+
+    await client.query('commit')
+    return result
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'GET') {
@@ -116,7 +140,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const db = getPool()
     const context = await getRequestContext(req)
     const organizationId = String(getSingleQueryValue(req.query.id)).trim() || context.activeOrganization.id
 
@@ -135,23 +158,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
-      organizationId,
-    ])
+    const organizationResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+      client.query('select id from organizations where id = $1 limit 1', [organizationId]),
+    )
 
     if (organizationResult.rowCount === 0) {
       res.status(404).json({ ok: false, error: 'Organization not found' })
       return
     }
 
-    const membersResult = await db.query(
-      `select om.id, om.role, om.created_at as "createdAt",
-              u.id as "userId", u.name as "userName", u.email as "userEmail"
-       from organization_members om
-       inner join users u on om.user_id = u.id
-       where om.organization_id = $1
-       order by u.name asc`,
-      [organizationId],
+    const membersResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+      client.query(
+        `select om.id, om.role, om.created_at as "createdAt",
+                u.id as "userId", u.name as "userName", u.email as "userEmail"
+         from organization_members om
+         inner join users u on om.user_id = u.id
+         where om.organization_id = $1
+         order by u.name asc`,
+        [organizationId],
+      ),
     )
 
     res.status(200).json({ ok: true, members: membersResult.rows })

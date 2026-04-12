@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { Pool } from 'pg'
+import { Pool, type PoolClient } from 'pg'
 
 export const config = {
   runtime: 'nodejs',
@@ -110,9 +110,32 @@ async function getRequestContext(req: VercelRequest) {
   }
 }
 
+async function withRlsContext<T>(
+  userId: string,
+  organizationId: string | null,
+  callback: (client: PoolClient) => Promise<T>,
+) {
+  const client = await getPool().connect()
+
+  try {
+    await client.query('begin')
+    await client.query("select set_config('app.current_user_id', $1, true)", [userId])
+    await client.query("select set_config('app.current_organization_id', $1, true)", [organizationId ?? ''])
+
+    const result = await callback(client)
+
+    await client.query('commit')
+    return result
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const db = getPool()
     const context = await getRequestContext(req)
 
     if (!context.currentUser.id) {
@@ -129,22 +152,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
-        organizationId,
-      ])
+      const organizationResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+        client.query('select id from organizations where id = $1 limit 1', [organizationId]),
+      )
 
       if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'Organization not found' })
         return
       }
 
-      const invitationsResult = await db.query(
-        `select id, organization_id as "organizationId", email, role, status,
-                invited_by_user_id as "invitedByUserId", created_at as "createdAt"
-         from invitations
-         where organization_id = $1
-         order by created_at desc`,
-        [organizationId],
+      const invitationsResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+        client.query(
+          `select id, organization_id as "organizationId", email, role, status,
+                  invited_by_user_id as "invitedByUserId", created_at as "createdAt"
+           from invitations
+           where organization_id = $1
+           order by created_at desc`,
+          [organizationId],
+        ),
       )
 
       res.status(200).json({ ok: true, invitations: invitationsResult.rows })
@@ -168,18 +193,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const normalizedOrganizationId = String(organizationId ?? context.activeOrganization.id).trim()
-      const organizationResult = await db.query('select id from organizations where id = $1 limit 1', [
+      const organizationResult = await withRlsContext(
+        context.currentUser.id,
         normalizedOrganizationId,
-      ])
+        (client) => client.query('select id from organizations where id = $1 limit 1', [normalizedOrganizationId]),
+      )
 
       if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'Organization not found' })
         return
       }
 
-      const inviterMembershipResult = await db.query(
-        'select id from organization_members where organization_id = $1 and user_id = $2 limit 1',
-        [normalizedOrganizationId, context.currentUser.id],
+      const inviterMembershipResult = await withRlsContext(
+        context.currentUser.id,
+        normalizedOrganizationId,
+        (client) =>
+          client.query(
+            'select id from organization_members where organization_id = $1 and user_id = $2 limit 1',
+            [normalizedOrganizationId, context.currentUser.id],
+          ),
       )
 
       if (inviterMembershipResult.rowCount === 0) {
@@ -187,12 +219,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const invitationResult = await db.query(
-        `insert into invitations (organization_id, email, role, status, invited_by_user_id)
-         values ($1, $2, $3, 'pending', $4)
-         returning id, organization_id as "organizationId", email, role, status,
-                   invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
-        [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
+      const invitationResult = await withRlsContext(context.currentUser.id, normalizedOrganizationId, (client) =>
+        client.query(
+          `insert into invitations (organization_id, email, role, status, invited_by_user_id)
+           values ($1, $2, $3, 'pending', $4)
+           returning id, organization_id as "organizationId", email, role, status,
+                     invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
+          [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
+        ),
       )
 
       res.status(201).json({ ok: true, invitation: invitationResult.rows[0] })
