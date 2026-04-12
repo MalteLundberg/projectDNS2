@@ -9,6 +9,7 @@ import invitationsHandler from '../api/invitations/index.ts'
 import organizationMembersHandler from '../api/organizations/[id]/members.ts'
 import organizationsHandler from '../api/organizations/index.ts'
 import sessionHandler from '../api/session.ts'
+import activeOrganizationHandler from '../api/session/active-organization.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -18,6 +19,7 @@ const distDir = path.join(rootDir, 'dist')
 type JsonResponse = {
   statusCode: number
   payload: unknown
+  headers?: Record<string, string | string[]>
 }
 
 type MockRequest = {
@@ -29,7 +31,10 @@ type MockRequest = {
 
 type LocalHandler = (
   req: MockRequest,
-  res: { status: (code: number) => { json: (body: unknown) => void } },
+  res: {
+    status: (code: number) => { json: (body: unknown) => void }
+    setHeader: (name: string, value: string | string[]) => void
+  },
 ) => void | Promise<void>
 
 function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown) {
@@ -67,6 +72,10 @@ async function runHandler(
         },
       }
     },
+    setHeader(name: string, value: string | string[]) {
+      response.headers ??= {}
+      response.headers[name] = value
+    },
   })
 
   return response
@@ -74,8 +83,9 @@ async function runHandler(
 
 function getHeaders(req: http.IncomingMessage) {
   return {
-    'x-user-email': req.headers['x-user-email'] ?? 'test@example.com',
-    'x-organization-id': req.headers['x-organization-id'],
+    cookie:
+      req.headers.cookie ??
+      'app_session=dev-test-session-token; active_organization_id=75757080-781e-4039-8443-52d825a41568',
   }
 }
 
@@ -110,6 +120,27 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/session') {
     const response = await runHandler(sessionHandler as unknown as LocalHandler, { method, query, headers })
+    if (response.headers) {
+      for (const [name, value] of Object.entries(response.headers)) {
+        res.setHeader(name, value)
+      }
+    }
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  if (pathname === '/api/session/active-organization') {
+    const response = await runHandler(activeOrganizationHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    if (response.headers) {
+      for (const [name, value] of Object.entries(response.headers)) {
+        res.setHeader(name, value)
+      }
+    }
     sendJson(res, response.statusCode, response.payload)
     return
   }

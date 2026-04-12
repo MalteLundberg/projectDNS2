@@ -49,25 +49,19 @@ type Invitation = {
 type DashboardState = {
   loading: boolean
   error?: string
-  currentUser?: CurrentUser
+  currentUser?: CurrentUser | null
   memberships: Membership[]
-  activeOrganization?: ActiveOrganization
+  activeOrganization?: ActiveOrganization | null
   organizations: Organization[]
   members: Member[]
   invitations: Invitation[]
 }
 
-const CURRENT_USER_EMAIL = 'test@example.com'
-
-function createContextHeaders(organizationId?: string) {
-  return {
-    'x-user-email': CURRENT_USER_EMAIL,
-    ...(organizationId ? { 'x-organization-id': organizationId } : {}),
-  }
-}
-
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, init)
+  const response = await fetch(input, {
+    credentials: 'include',
+    ...init,
+  })
   const contentType = response.headers.get('content-type') ?? ''
 
   if (!contentType.includes('application/json')) {
@@ -97,36 +91,39 @@ function App() {
   const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
   const [submitting, setSubmitting] = useState(false)
 
-  async function loadDashboard(nextOrganizationId?: string) {
+  async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }))
 
     try {
       const sessionResponse = await requestJson<{
         ok: boolean
-        currentUser: CurrentUser
+        currentUser: CurrentUser | null
         memberships: Membership[]
-        activeOrganization: ActiveOrganization
-      }>('/api/session', {
-        headers: createContextHeaders(nextOrganizationId),
-      })
+        activeOrganization: ActiveOrganization | null
+      }>('/api/session')
 
       const activeOrganization = sessionResponse.activeOrganization
 
+      if (!sessionResponse.currentUser || !activeOrganization) {
+        setState({
+          loading: false,
+          currentUser: sessionResponse.currentUser,
+          memberships: sessionResponse.memberships,
+          activeOrganization: activeOrganization,
+          organizations: [],
+          members: [],
+          invitations: [],
+        })
+        return
+      }
+
       const [organizationsResponse, membersResponse, invitationsResponse] = await Promise.all([
-        requestJson<{ ok: boolean; organizations: Organization[] }>('/api/organizations', {
-          headers: createContextHeaders(activeOrganization.id),
-        }),
+        requestJson<{ ok: boolean; organizations: Organization[] }>('/api/organizations'),
         requestJson<{ ok: boolean; members: Member[] }>(
           `/api/organizations/${activeOrganization.id}/members`,
-          {
-            headers: createContextHeaders(activeOrganization.id),
-          },
         ),
         requestJson<{ ok: boolean; invitations: Invitation[] }>(
           `/api/invitations?organizationId=${activeOrganization.id}`,
-          {
-            headers: createContextHeaders(activeOrganization.id),
-          },
         ),
       ])
 
@@ -170,7 +167,6 @@ function App() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...createContextHeaders(state.activeOrganization.id),
         },
         body: JSON.stringify({
           email: inviteEmail,
@@ -178,7 +174,7 @@ function App() {
         }),
       })
 
-      await loadDashboard(state.activeOrganization.id)
+      await loadDashboard()
       setInviteEmail('another.user@example.com')
       setInviteRole('user')
     } catch (error) {
@@ -193,17 +189,33 @@ function App() {
 
   async function handleOrganizationChange(nextOrganizationId: string) {
     setActiveOrganizationId(nextOrganizationId)
-    await loadDashboard(nextOrganizationId)
+
+    try {
+      await requestJson<{ ok: boolean; activeOrganization: ActiveOrganization }>(
+        '/api/session/active-organization',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ organizationId: nextOrganizationId }),
+        },
+      )
+      await loadDashboard()
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unknown organization change error',
+      }))
+    }
   }
 
   return (
     <main className="app-shell">
       <div className="hero">
-        <p className="eyebrow">Auth and tenant context foundation</p>
+        <p className="eyebrow">Cookie session foundation</p>
         <h1>Current user and active organization</h1>
         <p className="intro">
-          Enkel request-context med current user och aktiv organization via headers, redo att
-          ersattas av riktig auth och RLS senare.
+          Enkel session- och organization-cookie som gor user context stabilt i Vercel och
+          forbereder databaskontext for framtida RLS.
         </p>
       </div>
 

@@ -28,6 +28,20 @@ export const organizations = pgTable('organizations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const userSessions = pgTable(
+  'user_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    sessionToken: text('session_token').notNull().unique(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('user_sessions_user_id_idx').on(table.userId)],
+)
+
 export const organizationMembers = pgTable(
   'organization_members',
   {
@@ -76,6 +90,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(organizationMembers),
   invitations: many(invitations),
   organizationsCreated: many(organizations),
+  sessions: many(userSessions),
 }))
 
 export const organizationsRelations = relations(organizations, ({ one, many }) => ({
@@ -105,6 +120,13 @@ export const invitationsRelations = relations(invitations, ({ one }) => ({
   }),
   invitedBy: one(users, {
     fields: [invitations.invitedByUserId],
+    references: [users.id],
+  }),
+}))
+
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, {
+    fields: [userSessions.userId],
     references: [users.id],
   }),
 }))

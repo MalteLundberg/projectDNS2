@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm'
 import { getDb, getPool } from '../lib/database.ts'
 import { organizationMembers, organizations, users } from './schema.ts'
 
+const TEST_SESSION_TOKEN = 'dev-test-session-token'
+
 async function main() {
   const db = getDb()
 
@@ -56,18 +58,33 @@ async function main() {
     })
   }
 
+  const pool = getPool()
+  const existingSessionResult = await pool.query(
+    'select id from user_sessions where session_token = $1 limit 1',
+    [TEST_SESSION_TOKEN],
+  )
+
+  if (existingSessionResult.rowCount === 0) {
+    await pool.query(
+      `insert into user_sessions (session_token, user_id, expires_at)
+       values ($1, $2, $3)`,
+      [TEST_SESSION_TOKEN, user.id, '2099-01-01T00:00:00.000Z'],
+    )
+  }
+
   console.log(
     JSON.stringify(
       {
         userId: user.id,
         organizationId: organization.id,
+        sessionToken: TEST_SESSION_TOKEN,
       },
       null,
       2,
     ),
   )
 
-  await getPool().end()
+  await pool.end()
 }
 
 main().catch(async (error) => {

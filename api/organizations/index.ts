@@ -7,6 +7,7 @@ export const config = {
 
 let pool: Pool | undefined
 const FALLBACK_USER_EMAIL = 'test@example.com'
+const FALLBACK_SESSION_TOKEN = 'dev-test-session-token'
 
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL
@@ -23,14 +24,35 @@ function getPool() {
   return pool
 }
 
+function parseCookies(headerValue: string | undefined) {
+  const pairs = (headerValue ?? '').split(';').map((part) => part.trim()).filter(Boolean)
+
+  return Object.fromEntries(
+    pairs.map((pair) => {
+      const separatorIndex = pair.indexOf('=')
+
+      if (separatorIndex === -1) {
+        return [pair, '']
+      }
+
+      return [pair.slice(0, separatorIndex), decodeURIComponent(pair.slice(separatorIndex + 1))]
+    }),
+  )
+}
+
 async function getRequestContext(req: VercelRequest) {
   const db = getPool()
-  const requestedUserEmail = String(req.headers['x-user-email'] ?? '').trim()
-  const userEmail = requestedUserEmail || FALLBACK_USER_EMAIL
+  const cookies = parseCookies(req.headers.cookie)
+  const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN
 
-  const currentUserResult = await db.query('select id, email, name from users where email = $1 limit 1', [
-    userEmail,
-  ])
+  const currentUserResult = await db.query(
+    `select u.id, u.email, u.name
+     from user_sessions us
+     inner join users u on u.id = us.user_id
+     where us.session_token = $1 and us.expires_at > now()
+     limit 1`,
+    [sessionToken],
+  )
   const currentUser =
     currentUserResult.rows[0] ??
     (
@@ -41,7 +63,7 @@ async function getRequestContext(req: VercelRequest) {
 
   if (!currentUser) {
     console.error('api/organizations could not resolve current user', {
-      requestedUserEmail,
+      sessionToken,
       fallbackUserEmail: FALLBACK_USER_EMAIL,
     })
 
