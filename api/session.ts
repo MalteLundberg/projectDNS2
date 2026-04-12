@@ -49,72 +49,89 @@ function createOrganizationCookie(organizationId: string, maxAgeSeconds: number)
 }
 
 async function getRequestContext(req: VercelRequest) {
-  const db = getPool()
   const cookies = parseCookies(req.headers.cookie)
   const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN
+  const client = await getPool().connect()
 
-  const sessionResult = await db.query(
-    `select us.session_token as "sessionToken", us.expires_at as "expiresAt",
-            u.id, u.email, u.name
-     from user_sessions us
-     inner join users u on u.id = us.user_id
-     where us.session_token = $1 and us.expires_at > now()
-     limit 1`,
-    [sessionToken],
-  )
+  try {
+    const sessionResult = await client.query(
+      `select us.session_token as "sessionToken", us.expires_at as "expiresAt",
+              u.id, u.email, u.name
+       from user_sessions us
+       inner join users u on u.id = us.user_id
+       where us.session_token = $1 and us.expires_at > now()
+       limit 1`,
+      [sessionToken],
+    )
 
-  const currentUser =
-    sessionResult.rows[0] ??
-    (
-      await db.query('select id, email, name from users where email = $1 limit 1', [
-        FALLBACK_USER_EMAIL,
-      ])
-    ).rows[0]
+    const currentUser =
+      sessionResult.rows[0] ??
+      (
+        await client.query('select id, email, name from users where email = $1 limit 1', [
+          FALLBACK_USER_EMAIL,
+        ])
+      ).rows[0]
 
-  if (!currentUser) {
-    console.error('api/session could not resolve current user', { sessionToken })
+    if (!currentUser) {
+      console.error('api/session could not resolve current user', { sessionToken })
+
+      return {
+        currentUser: null,
+        memberships: [],
+        activeOrganization: null,
+        sessionToken: null,
+      }
+    }
+
+    await client.query('begin')
+    await client.query("select set_config('app.current_user_id', $1, true)", [currentUser.id])
+
+    const membershipsResult = await client.query(
+      `select om.organization_id as "organizationId", om.role,
+              o.name as "organizationName", o.slug as "organizationSlug"
+       from organization_members om
+       inner join organizations o on o.id = om.organization_id
+       where om.user_id = $1
+       order by o.created_at asc`,
+      [currentUser.id],
+    )
+
+    await client.query('commit')
+
+    const memberships = membershipsResult.rows
+    const cookieOrganizationId = String(cookies.active_organization_id ?? '').trim()
+    const activeOrganizationMembership =
+      memberships.find((membership) => membership.organizationId === cookieOrganizationId) ??
+      memberships[0] ??
+      null
 
     return {
-      currentUser: null,
-      memberships: [],
-      activeOrganization: null,
-      sessionToken: null,
+      currentUser: {
+        id: currentUser.id,
+        email: currentUser.email,
+        name: currentUser.name,
+      },
+      memberships,
+      activeOrganization: activeOrganizationMembership
+        ? {
+            id: activeOrganizationMembership.organizationId,
+            name: activeOrganizationMembership.organizationName,
+            slug: activeOrganizationMembership.organizationSlug,
+            role: activeOrganizationMembership.role,
+          }
+        : null,
+      sessionToken,
     }
-  }
+  } catch (error) {
+    try {
+      await client.query('rollback')
+    } catch {
+      // Ignore rollback errors when no transaction is active.
+    }
 
-  const membershipsResult = await db.query(
-    `select om.organization_id as "organizationId", om.role,
-            o.name as "organizationName", o.slug as "organizationSlug"
-     from organization_members om
-     inner join organizations o on o.id = om.organization_id
-     where om.user_id = $1
-     order by o.created_at asc`,
-    [currentUser.id],
-  )
-
-  const memberships = membershipsResult.rows
-  const cookieOrganizationId = String(cookies.active_organization_id ?? '').trim()
-  const activeOrganizationMembership =
-    memberships.find((membership) => membership.organizationId === cookieOrganizationId) ??
-    memberships[0] ??
-    null
-
-  return {
-    currentUser: {
-      id: currentUser.id,
-      email: currentUser.email,
-      name: currentUser.name,
-    },
-    memberships,
-    activeOrganization: activeOrganizationMembership
-      ? {
-          id: activeOrganizationMembership.organizationId,
-          name: activeOrganizationMembership.organizationName,
-          slug: activeOrganizationMembership.organizationSlug,
-          role: activeOrganizationMembership.role,
-        }
-      : null,
-    sessionToken,
+    throw error
+  } finally {
+    client.release()
   }
 }
 
