@@ -65,6 +65,38 @@ When an admin creates an invitation, the API now:
 
 If the invitation is created but the email send fails, the invitation remains created and the response includes a clear `mail.error` value.
 
+## PowerDNS setup
+
+The first PowerDNS integration uses the PowerDNS HTTP API, not the PowerDNS database.
+
+Required environment variables:
+
+- `POWERDNS_API_URL`
+- `POWERDNS_API_KEY`
+- `POWERDNS_SERVER_ID`
+
+Example:
+
+```env
+POWERDNS_API_URL=http://127.0.0.1:8081/api/v1
+POWERDNS_API_KEY=your-powerdns-api-key
+POWERDNS_SERVER_ID=localhost
+```
+
+Organization ownership stays in the application database via `dns_zones`.
+
+The app stores:
+
+- `organization_id`
+- `name`
+- `provider`
+- `powerdns_zone_id`
+- `created_by_user_id`
+
+This keeps tenant isolation in Postgres/RLS while PowerDNS remains the external zone provider.
+
+If PowerDNS is not reachable or not configured, `/api/zones` returns clear JSON errors and the rest of the app continues to work.
+
 ## Lokal setup
 
 ```bash

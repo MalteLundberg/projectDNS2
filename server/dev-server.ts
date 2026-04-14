@@ -12,6 +12,7 @@ import organizationMembersHandler from '../api/organizations/[id]/members.ts'
 import organizationsHandler from '../api/organizations/index.ts'
 import sessionHandler from '../api/session.ts'
 import activeOrganizationHandler from '../api/session/active-organization.ts'
+import zonesHandler from '../api/zones/index.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -175,6 +176,17 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/invitations') {
     const response = await runHandler(invitationsHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  if (pathname === '/api/zones') {
+    const response = await runHandler(zonesHandler as unknown as LocalHandler, {
       method,
       query,
       headers,

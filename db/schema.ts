@@ -28,6 +28,27 @@ export const organizations = pgTable('organizations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const dnsZones = pgTable(
+  'dns_zones',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    provider: text('provider').notNull().default('powerdns'),
+    powerdnsZoneId: text('powerdns_zone_id').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique('dns_zones_organization_id_name_unique').on(table.organizationId, table.name),
+    index('dns_zones_organization_id_idx').on(table.organizationId),
+  ],
+)
+
 export const userSessions = pgTable(
   'user_sessions',
   {
@@ -91,6 +112,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   invitations: many(invitations),
   organizationsCreated: many(organizations),
   sessions: many(userSessions),
+  dnsZonesCreated: many(dnsZones),
 }))
 
 export const organizationsRelations = relations(organizations, ({ one, many }) => ({
@@ -100,6 +122,7 @@ export const organizationsRelations = relations(organizations, ({ one, many }) =
   }),
   memberships: many(organizationMembers),
   invitations: many(invitations),
+  dnsZones: many(dnsZones),
 }))
 
 export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
@@ -120,6 +143,17 @@ export const invitationsRelations = relations(invitations, ({ one }) => ({
   }),
   invitedBy: one(users, {
     fields: [invitations.invitedByUserId],
+    references: [users.id],
+  }),
+}))
+
+export const dnsZonesRelations = relations(dnsZones, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [dnsZones.organizationId],
+    references: [organizations.id],
+  }),
+  createdBy: one(users, {
+    fields: [dnsZones.createdByUserId],
     references: [users.id],
   }),
 }))

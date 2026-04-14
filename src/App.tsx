@@ -46,6 +46,15 @@ type Invitation = {
   createdAt: string
 }
 
+type Zone = {
+  id: string
+  organizationId: string
+  name: string
+  provider: string
+  powerdnsZoneId: string
+  createdAt: string
+}
+
 type DashboardState = {
   loading: boolean
   error?: string
@@ -55,6 +64,7 @@ type DashboardState = {
   organizations: Organization[]
   members: Member[]
   invitations: Invitation[]
+  zones: Zone[]
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -85,12 +95,15 @@ function App() {
     organizations: [],
     members: [],
     invitations: [],
+    zones: [],
   })
   const [activeOrganizationId, setActiveOrganizationId] = useState('')
   const [inviteEmail, setInviteEmail] = useState('new.user@example.com')
   const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
   const [submitting, setSubmitting] = useState(false)
   const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
+  const [zoneName, setZoneName] = useState('example.com')
+  const [creatingZone, setCreatingZone] = useState(false)
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }))
@@ -114,11 +127,12 @@ function App() {
           organizations: [],
           members: [],
           invitations: [],
+          zones: [],
         })
         return
       }
 
-      const [organizationsResponse, membersResponse, invitationsResponse] = await Promise.all([
+      const [organizationsResponse, membersResponse, invitationsResponse, zonesResponse] = await Promise.all([
         requestJson<{ ok: boolean; organizations: Organization[] }>('/api/organizations'),
         requestJson<{ ok: boolean; members: Member[] }>(
           `/api/organizations/${activeOrganization.id}/members`,
@@ -126,6 +140,7 @@ function App() {
         requestJson<{ ok: boolean; invitations: Invitation[] }>(
           `/api/invitations?organizationId=${activeOrganization.id}`,
         ),
+        requestJson<{ ok: boolean; zones: Zone[] }>('/api/zones'),
       ])
 
       setActiveOrganizationId(activeOrganization.id)
@@ -137,6 +152,7 @@ function App() {
         organizations: organizationsResponse.organizations,
         members: membersResponse.members,
         invitations: invitationsResponse.invitations,
+        zones: zonesResponse.zones,
       })
     } catch (error) {
       setState({
@@ -145,6 +161,7 @@ function App() {
         organizations: [],
         members: [],
         invitations: [],
+        zones: [],
         error: error instanceof Error ? error.message : 'Unknown dashboard error',
       })
     }
@@ -185,6 +202,34 @@ function App() {
       }))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleZoneSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setCreatingZone(true)
+
+    try {
+      await requestJson<{ ok: boolean; zone: Zone; provider?: { name: string; zoneId: string } }>(
+        '/api/zones',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ name: zoneName }),
+        },
+      )
+
+      await loadDashboard()
+      setZoneName('new-zone.example.com')
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unknown zone creation error',
+      }))
+    } finally {
+      setCreatingZone(false)
     }
   }
 
@@ -340,6 +385,46 @@ function App() {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="panel">
+            <div className="panel__header">
+              <div>
+                <p className="panel__label">DNS zones</p>
+                <h2>{state.zones.length}</h2>
+              </div>
+            </div>
+            <ul className="list">
+              {state.zones.map((zone) => (
+                <li key={zone.id} className="list__item">
+                  <div>
+                    <strong>{zone.name}</strong>
+                    <p>{zone.provider}</p>
+                  </div>
+                  <code>{zone.powerdnsZoneId}</code>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="panel">
+            <p className="panel__label">Create DNS zone</p>
+            <h2>New zone</h2>
+            <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
+              <label>
+                Zone name
+                <input
+                  value={zoneName}
+                  onChange={(event) => setZoneName(event.target.value)}
+                  type="text"
+                  required
+                />
+              </label>
+
+              <button type="submit" disabled={creatingZone}>
+                {creatingZone ? 'Creating...' : 'Create zone'}
+              </button>
+            </form>
           </section>
 
           <section className="panel">
