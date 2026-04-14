@@ -37,7 +37,33 @@ Det här steget har ocksa lagt till verkligt app-side db-context per request via
 
 ```env
 DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-HOST/DBNAME?sslmode=require
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
+RESEND_FROM_EMAIL=ProjectDNS <onboarding@example.com>
 ```
+
+## Resend setup
+
+Invitation emails use Resend.
+
+Required environment variables:
+
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+
+Example:
+
+```env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
+RESEND_FROM_EMAIL=ProjectDNS <onboarding@example.com>
+```
+
+When an admin creates an invitation, the API now:
+
+1. creates the invitation in the database
+2. attempts to send an email via Resend
+3. returns JSON either way
+
+If the invitation is created but the email send fails, the invitation remains created and the response includes a clear `mail.error` value.
 
 ## Lokal setup
 

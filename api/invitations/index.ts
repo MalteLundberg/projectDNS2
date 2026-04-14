@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Pool, type PoolClient } from 'pg'
+import { sendInvitationEmail } from '../../lib/invitation-email.ts'
 
 export const config = {
   runtime: 'nodejs',
@@ -277,7 +278,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ),
       )
 
-      res.status(201).json({ ok: true, invitation: invitationResult.rows[0] })
+      const invitation = invitationResult.rows[0]
+      let mail = { sent: false as boolean, id: null as string | null, error: null as string | null }
+
+      try {
+        const emailResult = await sendInvitationEmail({
+          organizationName: activeMembership.organizationName,
+          inviterName: context.currentUser.name,
+          inviteeEmail: String(email).trim(),
+          role,
+        })
+
+        mail = {
+          sent: true,
+          id: emailResult?.id ?? null,
+          error: null,
+        }
+      } catch (mailError) {
+        const mailMessage = mailError instanceof Error ? mailError.message : 'Unknown invitation email error'
+        console.error('api/invitations email send failed', {
+          organizationId: normalizedOrganizationId,
+          email,
+          role,
+          error: mailError,
+        })
+
+        mail = {
+          sent: false,
+          id: null,
+          error: mailMessage,
+        }
+      }
+
+      res.status(201).json({ ok: true, invitation, mail })
       return
     }
 
