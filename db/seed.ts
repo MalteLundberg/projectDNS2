@@ -111,6 +111,7 @@ async function main() {
   }
 
   const pool = getPool()
+
   const existingSessionResult = await pool.query(
     'select id from user_sessions where session_token = $1 limit 1',
     [TEST_SESSION_TOKEN],

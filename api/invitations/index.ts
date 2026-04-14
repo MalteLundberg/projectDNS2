@@ -129,6 +129,7 @@ async function getRequestContext(req: VercelRequest) {
 
 async function withRlsContext<T>(
   userId: string,
+  userEmail: string,
   organizationId: string | null,
   callback: (client: PoolClient) => Promise<T>,
 ) {
@@ -137,6 +138,7 @@ async function withRlsContext<T>(
   try {
     await client.query('begin')
     await client.query("select set_config('app.current_user_id', $1, true)", [userId])
+    await client.query("select set_config('app.current_user_email', $1, true)", [userEmail])
     await client.query("select set_config('app.current_organization_id', $1, true)", [organizationId ?? ''])
 
     const result = await callback(client)
@@ -169,7 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const organizationResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+      const organizationResult = await withRlsContext(context.currentUser.id, context.currentUser.email, organizationId, (client) =>
         client.query('select id from organizations where id = $1 limit 1', [organizationId]),
       )
 
@@ -178,7 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const invitationsResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
+      const invitationsResult = await withRlsContext(context.currentUser.id, context.currentUser.email, organizationId, (client) =>
         client.query(
           `select id, organization_id as "organizationId", email, role, status,
                   invited_by_user_id as "invitedByUserId", created_at as "createdAt"
@@ -210,8 +212,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const normalizedOrganizationId = String(organizationId ?? context.activeOrganization.id).trim()
+      const activeMembership = context.memberships.find(
+        (membership) => membership.organizationId === normalizedOrganizationId,
+      )
+
+      if (!activeMembership || activeMembership.role !== 'admin') {
+        res.status(403).json({ ok: false, error: 'Only organization admins can create invitations' })
+        return
+      }
+
       const organizationResult = await withRlsContext(
         context.currentUser.id,
+        context.currentUser.email,
         normalizedOrganizationId,
         (client) => client.query('select id from organizations where id = $1 limit 1', [normalizedOrganizationId]),
       )
@@ -223,6 +235,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const inviterMembershipResult = await withRlsContext(
         context.currentUser.id,
+        context.currentUser.email,
         normalizedOrganizationId,
         (client) =>
           client.query(
@@ -236,7 +249,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const invitationResult = await withRlsContext(context.currentUser.id, normalizedOrganizationId, (client) =>
+      const existingInvitationResult = await withRlsContext(context.currentUser.id, context.currentUser.email, normalizedOrganizationId, (client) =>
+        client.query(
+          `select id, status
+           from invitations
+           where organization_id = $1 and email = $2
+           order by created_at desc
+           limit 1`,
+          [normalizedOrganizationId, String(email).trim()],
+        ),
+      )
+
+      const existingInvitation = existingInvitationResult.rows[0]
+
+      if (existingInvitation?.status === 'pending') {
+        res.status(409).json({ ok: false, error: 'A pending invitation already exists for this email' })
+        return
+      }
+
+      const invitationResult = await withRlsContext(context.currentUser.id, context.currentUser.email, normalizedOrganizationId, (client) =>
         client.query(
           `insert into invitations (organization_id, email, role, status, invited_by_user_id)
            values ($1, $2, $3, 'pending', $4)

@@ -90,6 +90,7 @@ function App() {
   const [inviteEmail, setInviteEmail] = useState('new.user@example.com')
   const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
   const [submitting, setSubmitting] = useState(false)
+  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }))
@@ -208,6 +209,27 @@ function App() {
     }
   }
 
+  async function handleRevokeInvitation(invitationId: string) {
+    setRevokingInvitationId(invitationId)
+
+    try {
+      await requestJson<{ ok: boolean; invitation: Invitation }>(
+        `/api/invitations/${invitationId}/revoke`,
+        {
+          method: 'POST',
+        },
+      )
+      await loadDashboard()
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unknown revoke invitation error',
+      }))
+    } finally {
+      setRevokingInvitationId(null)
+    }
+  }
+
   return (
     <main className="app-shell">
       <div className="hero">
@@ -302,7 +324,19 @@ function App() {
                     <strong>{invitation.email}</strong>
                     <p>{invitation.status}</p>
                   </div>
-                  <span className="pill">{invitation.role}</span>
+                  <div className="actions-row">
+                    <span className="pill">{invitation.role}</span>
+                    {invitation.status === 'pending' ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleRevokeInvitation(invitation.id)}
+                        disabled={revokingInvitationId === invitation.id}
+                      >
+                        {revokingInvitationId === invitation.id ? 'Revoking...' : 'Revoke'}
+                      </button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

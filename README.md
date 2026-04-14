@@ -140,7 +140,7 @@ grant select on user_sessions to projectdns2_app;
 
 grant select, insert on organizations to projectdns2_app;
 grant select, insert on organization_members to projectdns2_app;
-grant select, insert on invitations to projectdns2_app;
+grant select, insert, update on invitations to projectdns2_app;
 ```
 
 Kontrollera att tabellerna fortsatt ags av `neondb_owner` och inte av app-rollen:

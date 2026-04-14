@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import healthHandler from '../api/health.ts'
 import dbCheckHandler from '../api/db-check.ts'
 import invitationsHandler from '../api/invitations/index.ts'
+import acceptInvitationHandler from '../api/invitations/[id]/accept.ts'
+import revokeInvitationHandler from '../api/invitations/[id]/revoke.ts'
 import organizationMembersHandler from '../api/organizations/[id]/members.ts'
 import organizationsHandler from '../api/organizations/index.ts'
 import sessionHandler from '../api/session.ts'
@@ -175,6 +177,38 @@ const server = http.createServer(async (req, res) => {
     const response = await runHandler(invitationsHandler as unknown as LocalHandler, {
       method,
       query,
+      headers,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  const revokeInvitationMatch = pathname.match(/^\/api\/invitations\/([^/]+)\/revoke$/)
+
+  if (revokeInvitationMatch) {
+    const response = await runHandler(revokeInvitationHandler as unknown as LocalHandler, {
+      method,
+      query: {
+        ...query,
+        id: revokeInvitationMatch[1],
+      },
+      headers,
+      body: method === 'POST' ? await parseBody(req) : undefined,
+    })
+    sendJson(res, response.statusCode, response.payload)
+    return
+  }
+
+  const acceptInvitationMatch = pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/)
+
+  if (acceptInvitationMatch) {
+    const response = await runHandler(acceptInvitationHandler as unknown as LocalHandler, {
+      method,
+      query: {
+        ...query,
+        id: acceptInvitationMatch[1],
+      },
       headers,
       body: method === 'POST' ? await parseBody(req) : undefined,
     })
