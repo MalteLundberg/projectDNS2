@@ -97,6 +97,102 @@ This keeps tenant isolation in Postgres/RLS while PowerDNS remains the external 
 
 If PowerDNS is not reachable or not configured, `/api/zones` returns clear JSON errors and the rest of the app continues to work.
 
+## PowerDNS zones rollout
+
+The `dns_zones` migration is an application-owned table plus RLS policies. In the current setup, `DATABASE_URL` uses the least-privileged app role (`projectdns2_app`), so the migration should be applied with an admin/owner role, not the app role.
+
+### Manual rollout of `dns_zones`
+
+Run the SQL from `drizzle/0006_dns_zones.sql` with an admin role in Neon.
+
+Exact SQL:
+
+```sql
+CREATE TABLE "dns_zones" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "name" text NOT NULL,
+  "provider" text DEFAULT 'powerdns' NOT NULL,
+  "powerdns_zone_id" text NOT NULL,
+  "created_by_user_id" uuid,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "dns_zones_organization_id_name_unique" UNIQUE("organization_id", "name")
+);
+
+ALTER TABLE "dns_zones"
+  ADD CONSTRAINT "dns_zones_organization_id_organizations_id_fk"
+  FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade;
+
+ALTER TABLE "dns_zones"
+  ADD CONSTRAINT "dns_zones_created_by_user_id_users_id_fk"
+  FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null;
+
+CREATE INDEX "dns_zones_organization_id_idx"
+  ON "dns_zones" USING btree ("organization_id");
+
+ALTER TABLE "dns_zones" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "dns_zones" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "dns_zones_select_policy" ON "dns_zones"
+FOR SELECT
+USING (
+  public.is_organization_member(
+    dns_zones.organization_id,
+    NULLIF(current_setting('app.current_user_id', true), '')::uuid
+  )
+);
+
+CREATE POLICY "dns_zones_insert_policy" ON "dns_zones"
+FOR INSERT
+WITH CHECK (
+  organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::uuid
+  AND created_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+);
+```
+
+### Grants needed for the app role
+
+After the migration is applied with the admin role, grant the app role access:
+
+```sql
+grant select, insert on dns_zones to projectdns2_app;
+```
+
+### Local env for PowerDNS
+
+Add these values to local `.env`:
+
+```env
+POWERDNS_API_URL=http://127.0.0.1:8081/api/v1
+POWERDNS_API_KEY=your-powerdns-api-key
+POWERDNS_SERVER_ID=localhost
+```
+
+### Vercel env for PowerDNS
+
+Add these variables to Vercel:
+
+- `POWERDNS_API_URL`
+- `POWERDNS_API_KEY`
+- `POWERDNS_SERVER_ID`
+
+### Verification order after rollout
+
+1. Apply the `dns_zones` SQL with an admin role in Neon
+2. Run:
+
+```sql
+grant select, insert on dns_zones to projectdns2_app;
+```
+
+3. Set PowerDNS env locally and in Vercel
+4. Verify `GET /api/zones`
+5. Verify `POST /api/zones`
+6. Confirm that the created zone exists:
+   - in PowerDNS via HTTP API
+   - in app Postgres via `dns_zones`
+7. Verify that zones only appear for the correct organization via session + RLS
+
 ## Lokal setup
 
 ```bash
