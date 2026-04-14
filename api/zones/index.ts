@@ -16,6 +16,26 @@ type PowerDnsZone = {
   url?: string
 }
 
+type ZoneErrorCode =
+  | 'INVALID_JSON_BODY'
+  | 'INVALID_ZONE_NAME'
+  | 'POWERDNS_ENV_MISSING'
+  | 'POWERDNS_AUTH_FAILED'
+  | 'POWERDNS_UNREACHABLE'
+  | 'POWERDNS_REQUEST_FAILED'
+  | 'DNS_ZONE_SAVE_FAILED'
+
+class ZoneApiError extends Error {
+  code: ZoneErrorCode
+  details?: unknown
+
+  constructor(code: ZoneErrorCode, message: string, details?: unknown) {
+    super(message)
+    this.code = code
+    this.details = details
+  }
+}
+
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL
 
@@ -53,15 +73,15 @@ function getPowerDnsConfig() {
   const serverId = process.env.POWERDNS_SERVER_ID
 
   if (!apiUrl) {
-    throw new Error('POWERDNS_API_URL is not set')
+    throw new ZoneApiError('POWERDNS_ENV_MISSING', 'POWERDNS_API_URL is not set')
   }
 
   if (!apiKey) {
-    throw new Error('POWERDNS_API_KEY is not set')
+    throw new ZoneApiError('POWERDNS_ENV_MISSING', 'POWERDNS_API_KEY is not set')
   }
 
   if (!serverId) {
-    throw new Error('POWERDNS_SERVER_ID is not set')
+    throw new ZoneApiError('POWERDNS_ENV_MISSING', 'POWERDNS_SERVER_ID is not set')
   }
 
   return {
@@ -73,23 +93,52 @@ function getPowerDnsConfig() {
 
 async function powerDnsRequest(path: string, init?: RequestInit) {
   const config = getPowerDnsConfig()
-  const response = await fetch(`${config.apiUrl}/servers/${config.serverId}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': config.apiKey,
-      ...(init?.headers ?? {}),
-    },
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`${config.apiUrl}/servers/${config.serverId}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': config.apiKey,
+        ...(init?.headers ?? {}),
+      },
+    })
+  } catch (error) {
+    throw new ZoneApiError('POWERDNS_UNREACHABLE', 'PowerDNS API is not reachable', {
+      cause: error instanceof Error ? error.message : String(error),
+      url: `${config.apiUrl}/servers/${config.serverId}${path}`,
+    })
+  }
 
   const responseText = await response.text()
-  const data = responseText ? (JSON.parse(responseText) as { error?: string }) : null
+  let data: { error?: string } | PowerDnsZone | PowerDnsZone[] | null = null
+
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText) as { error?: string } | PowerDnsZone | PowerDnsZone[]
+    } catch {
+      data = null
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(
-      typeof data?.error === 'string'
+    if (response.status === 401 || response.status === 403) {
+      throw new ZoneApiError('POWERDNS_AUTH_FAILED', 'PowerDNS authentication failed', {
+        status: response.status,
+        responseText,
+      })
+    }
+
+    throw new ZoneApiError(
+      'POWERDNS_REQUEST_FAILED',
+      typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string'
         ? data.error
         : `PowerDNS request failed with status ${response.status}`,
+      {
+        status: response.status,
+        responseText,
+      },
     )
   }
 
@@ -99,6 +148,28 @@ async function powerDnsRequest(path: string, init?: RequestInit) {
 function normalizePowerDnsZoneName(name: string) {
   const trimmed = name.trim().toLowerCase()
   return trimmed.endsWith('.') ? trimmed : `${trimmed}.`
+}
+
+function parseZoneCreateBody(body: unknown) {
+  if (!body || typeof body !== 'object') {
+    throw new ZoneApiError('INVALID_JSON_BODY', 'Request body must be a JSON object')
+  }
+
+  const candidate = 'name' in body ? body.name : undefined
+
+  if (typeof candidate !== 'string') {
+    throw new ZoneApiError('INVALID_ZONE_NAME', 'name must be a string')
+  }
+
+  const trimmedName = candidate.trim()
+
+  if (!trimmedName) {
+    throw new ZoneApiError('INVALID_ZONE_NAME', 'name is required')
+  }
+
+  return {
+    name: normalizePowerDnsZoneName(trimmedName),
+  }
 }
 
 async function createZone(name: string): Promise<PowerDnsZone> {
@@ -232,12 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { name } = req.body ?? {}
-
-      if (!name) {
-        res.status(400).json({ ok: false, error: 'name is required' })
-        return
-      }
+      const parsedBody = parseZoneCreateBody(req.body)
 
       const activeMembership = context.memberships.find(
         (membership) => membership.organizationId === activeOrganization.id,
@@ -248,7 +314,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
 
-      const normalizedName = normalizePowerDnsZoneName(String(name))
+      const normalizedName = parsedBody.name
       const existingZoneResult = await withRlsContext(context.currentUser.id, activeOrganization.id, (client) =>
         client.query('select id from dns_zones where organization_id = $1 and name = $2 limit 1', [
           activeOrganization.id,
@@ -266,8 +332,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         providerZone = await createZone(normalizedName)
       } catch (providerError) {
-        const providerMessage =
-          providerError instanceof Error ? providerError.message : 'Unknown PowerDNS error'
+        const providerMessage = providerError instanceof Error ? providerError.message : 'Unknown PowerDNS error'
+        const providerCode = providerError instanceof ZoneApiError ? providerError.code : 'POWERDNS_REQUEST_FAILED'
+        const providerDetails = providerError instanceof ZoneApiError ? providerError.details : undefined
 
         console.error('api/zones create zone in PowerDNS failed', {
           organizationId: activeOrganization.id,
@@ -278,7 +345,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({
           ok: false,
           error: providerMessage,
+          code: providerCode,
           provider: 'powerdns',
+          details: providerDetails,
         })
         return
       }
@@ -329,6 +398,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({
           ok: false,
           error: databaseMessage,
+          code: 'DNS_ZONE_SAVE_FAILED',
           provider: {
             name: 'powerdns',
             zoneId: providerZone.id ?? providerZone.name ?? normalizedName,
@@ -341,12 +411,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(405).json({ ok: false, error: 'Method not allowed' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown zones error'
+    const code = error instanceof ZoneApiError ? error.code : undefined
+    const details = error instanceof ZoneApiError ? error.details : undefined
     console.error('api/zones failed', {
       method: req.method,
       query: req.query,
       body: req.body,
       error,
     })
-    res.status(200).json({ ok: false, zones: [], error: message })
+    res.status(200).json({ ok: false, zones: [], error: message, code, details })
   }
 }
