@@ -1,57 +1,60 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { Pool, type PoolClient } from 'pg'
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { Pool, type PoolClient } from "pg";
 
 export const config = {
-  runtime: 'nodejs',
-}
+  runtime: "nodejs",
+};
 
-let pool: Pool | undefined
-const FALLBACK_USER_EMAIL = 'test@example.com'
-const FALLBACK_SESSION_TOKEN = 'dev-test-session-token'
+let pool: Pool | undefined;
+const FALLBACK_USER_EMAIL = "test@example.com";
+const FALLBACK_SESSION_TOKEN = "dev-test-session-token";
 
 function getPool() {
-  const databaseUrl = process.env.DATABASE_URL
+  const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is not set')
+    throw new Error("DATABASE_URL is not set");
   }
 
   pool ??= new Pool({
     connectionString: databaseUrl,
     ssl: { rejectUnauthorized: false },
-  })
+  });
 
-  return pool
+  return pool;
 }
 
 function getSingleQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
-    return value[0] ?? ''
+    return value[0] ?? "";
   }
 
-  return value ?? ''
+  return value ?? "";
 }
 
 function parseCookies(headerValue: string | undefined) {
-  const pairs = (headerValue ?? '').split(';').map((part) => part.trim()).filter(Boolean)
+  const pairs = (headerValue ?? "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
 
   return Object.fromEntries(
     pairs.map((pair) => {
-      const separatorIndex = pair.indexOf('=')
+      const separatorIndex = pair.indexOf("=");
 
       if (separatorIndex === -1) {
-        return [pair, '']
+        return [pair, ""];
       }
 
-      return [pair.slice(0, separatorIndex), decodeURIComponent(pair.slice(separatorIndex + 1))]
+      return [pair.slice(0, separatorIndex), decodeURIComponent(pair.slice(separatorIndex + 1))];
     }),
-  )
+  );
 }
 
 async function getRequestContext(req: VercelRequest) {
-  const cookies = parseCookies(req.headers.cookie)
-  const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN
-  const client = await getPool().connect()
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN;
+  const client = await getPool().connect();
 
   try {
     const currentUserResult = await client.query(
@@ -61,30 +64,30 @@ async function getRequestContext(req: VercelRequest) {
        where us.session_token = $1 and us.expires_at > now()
        limit 1`,
       [sessionToken],
-    )
+    );
     const currentUser =
       currentUserResult.rows[0] ??
       (
-        await client.query('select id, email, name from users where email = $1 limit 1', [
+        await client.query("select id, email, name from users where email = $1 limit 1", [
           FALLBACK_USER_EMAIL,
         ])
-      ).rows[0]
+      ).rows[0];
 
     if (!currentUser) {
-      console.error('api/organizations/[id]/members could not resolve current user', {
+      console.error("api/organizations/[id]/members could not resolve current user", {
         sessionToken,
         fallbackUserEmail: FALLBACK_USER_EMAIL,
-      })
+      });
 
       return {
         currentUser: null,
         memberships: [],
         activeOrganization: null,
-      }
+      };
     }
 
-    await client.query('begin')
-    await client.query("select set_config('app.current_user_id', $1, true)", [currentUser.id])
+    await client.query("begin");
+    await client.query("select set_config('app.current_user_id', $1, true)", [currentUser.id]);
 
     const membershipsResult = await client.query(
       `select om.organization_id as "organizationId", om.role,
@@ -94,35 +97,35 @@ async function getRequestContext(req: VercelRequest) {
        where om.user_id = $1
        order by o.created_at asc`,
       [currentUser.id],
-    )
+    );
 
-    await client.query('commit')
+    await client.query("commit");
 
-    const memberships = membershipsResult.rows
+    const memberships = membershipsResult.rows;
     const requestedOrganizationId =
-      String(cookies.active_organization_id ?? '').trim() ||
-      String(getSingleQueryValue(req.query.id)).trim()
+      String(cookies.active_organization_id ?? "").trim() ||
+      String(getSingleQueryValue(req.query.id)).trim();
 
     const activeOrganization =
       memberships.find((membership) => membership.organizationId === requestedOrganizationId) ??
       memberships[0] ??
-      null
+      null;
 
     return {
       currentUser,
       memberships,
       activeOrganization,
-    }
+    };
   } catch (error) {
     try {
-      await client.query('rollback')
+      await client.query("rollback");
     } catch {
       // Ignore rollback errors when no transaction is active.
     }
 
-    throw error
+    throw error;
   } finally {
-    client.release()
+    client.release();
   }
 }
 
@@ -131,57 +134,63 @@ async function withRlsContext<T>(
   organizationId: string | null,
   callback: (client: PoolClient) => Promise<T>,
 ) {
-  const client = await getPool().connect()
+  const client = await getPool().connect();
 
   try {
-    await client.query('begin')
-    await client.query("select set_config('app.current_user_id', $1, true)", [userId])
-    await client.query("select set_config('app.current_organization_id', $1, true)", [organizationId ?? ''])
+    await client.query("begin");
+    await client.query("select set_config('app.current_user_id', $1, true)", [userId]);
+    await client.query("select set_config('app.current_organization_id', $1, true)", [
+      organizationId ?? "",
+    ]);
 
-    const result = await callback(client)
+    const result = await callback(client);
 
-    await client.query('commit')
-    return result
+    await client.query("commit");
+    return result;
   } catch (error) {
-    await client.query('rollback')
-    throw error
+    await client.query("rollback");
+    throw error;
   } finally {
-    client.release()
+    client.release();
   }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    if (req.method !== 'GET') {
-      res.status(405).json({ ok: false, error: 'Method not allowed' })
-      return
+    if (req.method !== "GET") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
     }
 
-    const context = await getRequestContext(req)
-    const organizationId = String(getSingleQueryValue(req.query.id)).trim() || context.activeOrganization.id
+    const context = await getRequestContext(req);
+    const organizationId =
+      String(getSingleQueryValue(req.query.id)).trim() || context.activeOrganization.id;
 
     if (!context.currentUser.id) {
-      res.status(200).json({ ok: false, members: [], error: 'Current user could not be resolved' })
-      return
+      res.status(200).json({ ok: false, members: [], error: "Current user could not be resolved" });
+      return;
     }
 
     if (!organizationId) {
-      res.status(200).json({ ok: true, members: [] })
-      return
+      res.status(200).json({ ok: true, members: [] });
+      return;
     }
 
     if (!context.memberships.some((membership) => membership.organizationId === organizationId)) {
-      res.status(200).json({ ok: false, members: [], error: 'Access denied for organization' })
-      return
+      res.status(200).json({ ok: false, members: [], error: "Access denied for organization" });
+      return;
     }
 
-    const organizationResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
-      client.query('select id from organizations where id = $1 limit 1', [organizationId]),
-    )
+    const organizationResult = await withRlsContext(
+      context.currentUser.id,
+      organizationId,
+      (client) =>
+        client.query("select id from organizations where id = $1 limit 1", [organizationId]),
+    );
 
     if (organizationResult.rowCount === 0) {
-      res.status(404).json({ ok: false, error: 'Organization not found' })
-      return
+      res.status(404).json({ ok: false, error: "Organization not found" });
+      return;
     }
 
     const membersResult = await withRlsContext(context.currentUser.id, organizationId, (client) =>
@@ -194,16 +203,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          order by u.name asc`,
         [organizationId],
       ),
-    )
+    );
 
-    res.status(200).json({ ok: true, members: membersResult.rows })
+    res.status(200).json({ ok: true, members: membersResult.rows });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown members error'
-    console.error('api/organizations/[id]/members failed', {
+    const message = error instanceof Error ? error.message : "Unknown members error";
+    console.error("api/organizations/[id]/members failed", {
       method: req.method,
       query: req.query,
       error,
-    })
-    res.status(200).json({ ok: false, members: [], error: message })
+    });
+    res.status(200).json({ ok: false, members: [], error: message });
   }
 }

@@ -1,92 +1,93 @@
-import type { VercelRequest } from '@vercel/node'
-import { Pool } from 'pg'
+import type { VercelRequest } from "@vercel/node";
+import { Pool } from "pg";
 
-let pool: Pool | undefined
-const FALLBACK_USER_EMAIL = 'test@example.com'
+let pool: Pool | undefined;
+const FALLBACK_USER_EMAIL = "test@example.com";
 
 function getPool() {
-  const databaseUrl = process.env.DATABASE_URL
+  const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is not set')
+    throw new Error("DATABASE_URL is not set");
   }
 
   pool ??= new Pool({
     connectionString: databaseUrl,
     ssl: { rejectUnauthorized: false },
-  })
+  });
 
-  return pool
+  return pool;
 }
 
 function getSingleValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
-    return value[0] ?? ''
+    return value[0] ?? "";
   }
 
-  return value ?? ''
+  return value ?? "";
 }
 
 export type RequestContext = {
   currentUser: {
-    id: string
-    email: string
-    name: string
-  }
+    id: string;
+    email: string;
+    name: string;
+  };
   memberships: Array<{
-    organizationId: string
-    role: 'admin' | 'user'
-    organizationName: string
-    organizationSlug: string
-  }>
+    organizationId: string;
+    role: "admin" | "user";
+    organizationName: string;
+    organizationSlug: string;
+  }>;
   activeOrganization: {
-    id: string
-    name: string
-    slug: string
-    role: 'admin' | 'user'
-  }
-}
+    id: string;
+    name: string;
+    slug: string;
+    role: "admin" | "user";
+  };
+};
 
 async function getFallbackUser(db: Pool) {
   const fallbackUserResult = await db.query(
-    'select id, email, name from users where email = $1 limit 1',
+    "select id, email, name from users where email = $1 limit 1",
     [FALLBACK_USER_EMAIL],
-  )
+  );
 
-  return fallbackUserResult.rows[0]
+  return fallbackUserResult.rows[0];
 }
 
 export async function getRequestContext(req: VercelRequest): Promise<RequestContext> {
-  const db = getPool()
-  const requestedUserEmail = String(req.headers['x-user-email'] ?? '').trim()
-  const userEmail = requestedUserEmail || FALLBACK_USER_EMAIL
+  const db = getPool();
+  const requestedUserEmail = String(req.headers["x-user-email"] ?? "").trim();
+  const userEmail = requestedUserEmail || FALLBACK_USER_EMAIL;
 
-  const currentUserResult = await db.query('select id, email, name from users where email = $1 limit 1', [
-    userEmail,
-  ])
+  const currentUserResult = await db.query(
+    "select id, email, name from users where email = $1 limit 1",
+    [userEmail],
+  );
 
-  const currentUser = currentUserResult.rows[0] ?? (await getFallbackUser(db))
+  const currentUser = currentUserResult.rows[0] ?? (await getFallbackUser(db));
 
   if (!currentUser) {
-    console.error('request-context could not resolve current user', {
+    console.error("request-context could not resolve current user", {
       requestedUserEmail,
       fallbackUserEmail: FALLBACK_USER_EMAIL,
-    })
+    });
 
     return {
       currentUser: {
-        id: '',
+        id: "",
         email: userEmail,
-        name: 'Unknown User',
+        name: "Unknown User",
       },
       memberships: [],
       activeOrganization: {
-        id: '',
-        name: 'No Organization',
-        slug: '',
-        role: 'user',
+        id: "",
+        name: "No Organization",
+        slug: "",
+        role: "user",
       },
-    }
+    };
   }
 
   const membershipsResult = await db.query(
@@ -97,54 +98,54 @@ export async function getRequestContext(req: VercelRequest): Promise<RequestCont
      where om.user_id = $1
      order by o.created_at asc`,
     [currentUser.id],
-  )
+  );
 
-  const memberships = membershipsResult.rows as RequestContext['memberships']
+  const memberships = membershipsResult.rows as RequestContext["memberships"];
 
   if (memberships.length === 0) {
-    console.error('request-context found user without memberships', {
+    console.error("request-context found user without memberships", {
       currentUserId: currentUser.id,
       currentUserEmail: currentUser.email,
-    })
+    });
 
     return {
       currentUser,
       memberships: [],
       activeOrganization: {
-        id: '',
-        name: 'No Organization',
-        slug: '',
-        role: 'user',
+        id: "",
+        name: "No Organization",
+        slug: "",
+        role: "user",
       },
-    }
+    };
   }
 
-  const headerOrganizationId = String(req.headers['x-organization-id'] ?? '').trim()
-  const queryOrganizationId = String(getSingleValue(req.query.organizationId)).trim()
-  const body = req.body as { organizationId?: string } | undefined
-  const bodyOrganizationId = String(body?.organizationId ?? '').trim()
-  const requestedOrganizationId = headerOrganizationId || queryOrganizationId || bodyOrganizationId
+  const headerOrganizationId = String(req.headers["x-organization-id"] ?? "").trim();
+  const queryOrganizationId = String(getSingleValue(req.query.organizationId)).trim();
+  const body = req.body as { organizationId?: string } | undefined;
+  const bodyOrganizationId = String(body?.organizationId ?? "").trim();
+  const requestedOrganizationId = headerOrganizationId || queryOrganizationId || bodyOrganizationId;
 
   const activeMembership =
     memberships.find((membership) => membership.organizationId === requestedOrganizationId) ??
-    memberships[0]
+    memberships[0];
 
   if (!activeMembership) {
-    console.error('request-context could not resolve active organization', {
+    console.error("request-context could not resolve active organization", {
       requestedOrganizationId,
       currentUserId: currentUser.id,
-    })
+    });
 
     return {
       currentUser,
       memberships,
       activeOrganization: {
-        id: memberships[0]?.organizationId ?? '',
-        name: memberships[0]?.organizationName ?? 'No Organization',
-        slug: memberships[0]?.organizationSlug ?? '',
-        role: memberships[0]?.role ?? 'user',
+        id: memberships[0]?.organizationId ?? "",
+        name: memberships[0]?.organizationName ?? "No Organization",
+        slug: memberships[0]?.organizationSlug ?? "",
+        role: memberships[0]?.role ?? "user",
       },
-    }
+    };
   }
 
   return {
@@ -156,5 +157,5 @@ export async function getRequestContext(req: VercelRequest): Promise<RequestCont
       slug: activeMembership.organizationSlug,
       role: activeMembership.role,
     },
-  }
+  };
 }

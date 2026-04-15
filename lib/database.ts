@@ -1,6 +1,6 @@
-import { and, desc, eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
+import { and, desc, eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import {
   invitations,
   organizationMembers,
@@ -8,53 +8,53 @@ import {
   users,
   type invitationStatuses,
   type userRoles,
-} from '../db/schema.ts'
+} from "../db/schema.ts";
 
-let pool: Pool | undefined
+let pool: Pool | undefined;
 
 function getDatabaseUrl() {
-  const databaseUrl = process.env.DATABASE_URL
+  const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is not set')
+    throw new Error("DATABASE_URL is not set");
   }
 
-  return databaseUrl
+  return databaseUrl;
 }
 
 export function getDb() {
   pool ??= new Pool({
     connectionString: getDatabaseUrl(),
     ssl: { rejectUnauthorized: false },
-  })
+  });
 
-  return drizzle(pool)
+  return drizzle(pool);
 }
 
 export function getPool() {
   pool ??= new Pool({
     connectionString: getDatabaseUrl(),
     ssl: { rejectUnauthorized: false },
-  })
+  });
 
-  return pool
+  return pool;
 }
 
-export type OrganizationRole = (typeof userRoles)[number]
-export type InvitationStatus = (typeof invitationStatuses)[number]
+export type OrganizationRole = (typeof userRoles)[number];
+export type InvitationStatus = (typeof invitationStatuses)[number];
 
 export async function listOrganizations() {
-  const db = getDb()
+  const db = getDb();
 
-  return db.select().from(organizations).orderBy(organizations.createdAt)
+  return db.select().from(organizations).orderBy(organizations.createdAt);
 }
 
 export async function createOrganization(input: {
-  name: string
-  slug: string
-  createdByUserId: string
+  name: string;
+  slug: string;
+  createdByUserId: string;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   return (
     await db
@@ -65,15 +65,15 @@ export async function createOrganization(input: {
         createdByUserId: input.createdByUserId,
       })
       .returning()
-  )[0]
+  )[0];
 }
 
 export async function addOrganizationMember(input: {
-  organizationId: string
-  userId: string
-  role: OrganizationRole
+  organizationId: string;
+  userId: string;
+  role: OrganizationRole;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   return (
     await db
@@ -84,11 +84,11 @@ export async function addOrganizationMember(input: {
         role: input.role,
       })
       .returning()
-  )[0]
+  )[0];
 }
 
 export async function listOrganizationMembers(organizationId: string) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .select({
@@ -102,26 +102,26 @@ export async function listOrganizationMembers(organizationId: string) {
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
     .where(eq(organizationMembers.organizationId, organizationId))
-    .orderBy(users.name)
+    .orderBy(users.name);
 }
 
 export async function listInvitations(organizationId: string) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .select()
     .from(invitations)
     .where(eq(invitations.organizationId, organizationId))
-    .orderBy(desc(invitations.createdAt))
+    .orderBy(desc(invitations.createdAt));
 }
 
 export async function createInvitation(input: {
-  organizationId: string
-  email: string
-  role: OrganizationRole
-  invitedByUserId: string
+  organizationId: string;
+  email: string;
+  role: OrganizationRole;
+  invitedByUserId: string;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   return (
     await db
@@ -130,42 +130,33 @@ export async function createInvitation(input: {
         organizationId: input.organizationId,
         email: input.email,
         role: input.role,
-        status: 'pending',
+        status: "pending",
         invitedByUserId: input.invitedByUserId,
       })
       .returning()
-  )[0]
+  )[0];
 }
 
 export async function getUserByEmail(email: string) {
-  const db = getDb()
+  const db = getDb();
 
-  return (
-    await db.select().from(users).where(eq(users.email, email)).limit(1)
-  )[0]
+  return (await db.select().from(users).where(eq(users.email, email)).limit(1))[0];
 }
 
 export async function getOrganizationBySlug(slug: string) {
-  const db = getDb()
+  const db = getDb();
 
-  return (
-    await db.select().from(organizations).where(eq(organizations.slug, slug)).limit(1)
-  )[0]
+  return (await db.select().from(organizations).where(eq(organizations.slug, slug)).limit(1))[0];
 }
 
 export async function getOrganizationById(id: string) {
-  const db = getDb()
+  const db = getDb();
 
-  return (
-    await db.select().from(organizations).where(eq(organizations.id, id)).limit(1)
-  )[0]
+  return (await db.select().from(organizations).where(eq(organizations.id, id)).limit(1))[0];
 }
 
-export async function getOrganizationMember(input: {
-  organizationId: string
-  userId: string
-}) {
-  const db = getDb()
+export async function getOrganizationMember(input: { organizationId: string; userId: string }) {
+  const db = getDb();
 
   return (
     await db
@@ -178,5 +169,5 @@ export async function getOrganizationMember(input: {
         ),
       )
       .limit(1)
-  )[0]
+  )[0];
 }

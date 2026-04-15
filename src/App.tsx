@@ -1,91 +1,91 @@
-import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
 type Organization = {
-  id: string
-  name: string
-  slug: string
-  createdAt: string
-}
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+};
 
 type Membership = {
-  organizationId: string
-  role: 'admin' | 'user'
-  organizationName: string
-  organizationSlug: string
-}
+  organizationId: string;
+  role: "admin" | "user";
+  organizationName: string;
+  organizationSlug: string;
+};
 
 type CurrentUser = {
-  id: string
-  email: string
-  name: string
-}
+  id: string;
+  email: string;
+  name: string;
+};
 
 type ActiveOrganization = {
-  id: string
-  name: string
-  slug: string
-  role: 'admin' | 'user'
-}
+  id: string;
+  name: string;
+  slug: string;
+  role: "admin" | "user";
+};
 
 type Member = {
-  id: string
-  role: 'admin' | 'user'
-  userId: string
-  userName: string
-  userEmail: string
-  createdAt: string
-}
+  id: string;
+  role: "admin" | "user";
+  userId: string;
+  userName: string;
+  userEmail: string;
+  createdAt: string;
+};
 
 type Invitation = {
-  id: string
-  organizationId: string
-  email: string
-  role: 'admin' | 'user'
-  status: 'pending' | 'accepted' | 'revoked'
-  createdAt: string
-}
+  id: string;
+  organizationId: string;
+  email: string;
+  role: "admin" | "user";
+  status: "pending" | "accepted" | "revoked";
+  createdAt: string;
+};
 
 type Zone = {
-  id: string
-  organizationId: string
-  name: string
-  provider: string
-  powerdnsZoneId: string
-  createdAt: string
-}
+  id: string;
+  organizationId: string;
+  name: string;
+  provider: string;
+  powerdnsZoneId: string;
+  createdAt: string;
+};
 
 type DashboardState = {
-  loading: boolean
-  error?: string
-  currentUser?: CurrentUser | null
-  memberships: Membership[]
-  activeOrganization?: ActiveOrganization | null
-  organizations: Organization[]
-  members: Member[]
-  invitations: Invitation[]
-  zones: Zone[]
-}
+  loading: boolean;
+  error?: string;
+  currentUser?: CurrentUser | null;
+  memberships: Membership[];
+  activeOrganization?: ActiveOrganization | null;
+  organizations: Organization[];
+  members: Member[];
+  invitations: Invitation[];
+  zones: Zone[];
+};
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
-    credentials: 'include',
+    credentials: "include",
     ...init,
-  })
-  const contentType = response.headers.get('content-type') ?? ''
+  });
+  const contentType = response.headers.get("content-type") ?? "";
 
-  if (!contentType.includes('application/json')) {
-    const text = await response.text()
-    throw new Error(`Expected JSON but received: ${text.slice(0, 120)}`)
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(`Expected JSON but received: ${text.slice(0, 120)}`);
   }
 
-  const data = (await response.json()) as T & { error?: string }
+  const data = (await response.json()) as T & { error?: string };
 
   if (!response.ok) {
-    throw new Error(data.error ?? `Request failed with status ${response.status}`)
+    throw new Error(data.error ?? `Request failed with status ${response.status}`);
   }
 
-  return data
+  return data;
 }
 
 function App() {
@@ -96,27 +96,27 @@ function App() {
     members: [],
     invitations: [],
     zones: [],
-  })
-  const [activeOrganizationId, setActiveOrganizationId] = useState('')
-  const [inviteEmail, setInviteEmail] = useState('new.user@example.com')
-  const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user')
-  const [submitting, setSubmitting] = useState(false)
-  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
-  const [zoneName, setZoneName] = useState('example.com')
-  const [creatingZone, setCreatingZone] = useState(false)
+  });
+  const [activeOrganizationId, setActiveOrganizationId] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("new.user@example.com");
+  const [inviteRole, setInviteRole] = useState<"admin" | "user">("user");
+  const [submitting, setSubmitting] = useState(false);
+  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
+  const [zoneName, setZoneName] = useState("example.com");
+  const [creatingZone, setCreatingZone] = useState(false);
 
   async function loadDashboard() {
-    setState((current) => ({ ...current, loading: true, error: undefined }))
+    setState((current) => ({ ...current, loading: true, error: undefined }));
 
     try {
       const sessionResponse = await requestJson<{
-        ok: boolean
-        currentUser: CurrentUser | null
-        memberships: Membership[]
-        activeOrganization: ActiveOrganization | null
-      }>('/api/session')
+        ok: boolean;
+        currentUser: CurrentUser | null;
+        memberships: Membership[];
+        activeOrganization: ActiveOrganization | null;
+      }>("/api/session");
 
-      const activeOrganization = sessionResponse.activeOrganization
+      const activeOrganization = sessionResponse.activeOrganization;
 
       if (!sessionResponse.currentUser || !activeOrganization) {
         setState({
@@ -128,22 +128,23 @@ function App() {
           members: [],
           invitations: [],
           zones: [],
-        })
-        return
+        });
+        return;
       }
 
-      const [organizationsResponse, membersResponse, invitationsResponse, zonesResponse] = await Promise.all([
-        requestJson<{ ok: boolean; organizations: Organization[] }>('/api/organizations'),
-        requestJson<{ ok: boolean; members: Member[] }>(
-          `/api/organizations/${activeOrganization.id}/members`,
-        ),
-        requestJson<{ ok: boolean; invitations: Invitation[] }>(
-          `/api/invitations?organizationId=${activeOrganization.id}`,
-        ),
-        requestJson<{ ok: boolean; zones: Zone[] }>('/api/zones'),
-      ])
+      const [organizationsResponse, membersResponse, invitationsResponse, zonesResponse] =
+        await Promise.all([
+          requestJson<{ ok: boolean; organizations: Organization[] }>("/api/organizations"),
+          requestJson<{ ok: boolean; members: Member[] }>(
+            `/api/organizations/${activeOrganization.id}/members`,
+          ),
+          requestJson<{ ok: boolean; invitations: Invitation[] }>(
+            `/api/invitations?organizationId=${activeOrganization.id}`,
+          ),
+          requestJson<{ ok: boolean; zones: Zone[] }>("/api/zones"),
+        ]);
 
-      setActiveOrganizationId(activeOrganization.id)
+      setActiveOrganizationId(activeOrganization.id);
       setState({
         loading: false,
         currentUser: sessionResponse.currentUser,
@@ -153,7 +154,7 @@ function App() {
         members: membersResponse.members,
         invitations: invitationsResponse.invitations,
         zones: zonesResponse.zones,
-      })
+      });
     } catch (error) {
       setState({
         loading: false,
@@ -162,116 +163,116 @@ function App() {
         members: [],
         invitations: [],
         zones: [],
-        error: error instanceof Error ? error.message : 'Unknown dashboard error',
-      })
+        error: error instanceof Error ? error.message : "Unknown dashboard error",
+      });
     }
   }
 
   useEffect(() => {
-    void loadDashboard()
-  }, [])
+    void loadDashboard();
+  }, []);
 
   async function handleInviteSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+    event.preventDefault();
 
     if (!state.activeOrganization) {
-      return
+      return;
     }
 
-    setSubmitting(true)
+    setSubmitting(true);
 
     try {
-      await requestJson<{ ok: boolean; invitation: Invitation }>('/api/invitations', {
-        method: 'POST',
+      await requestJson<{ ok: boolean; invitation: Invitation }>("/api/invitations", {
+        method: "POST",
         headers: {
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
         body: JSON.stringify({
           email: inviteEmail,
           role: inviteRole,
         }),
-      })
+      });
 
-      await loadDashboard()
-      setInviteEmail('another.user@example.com')
-      setInviteRole('user')
+      await loadDashboard();
+      setInviteEmail("another.user@example.com");
+      setInviteRole("user");
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'Unknown invitation error',
-      }))
+        error: error instanceof Error ? error.message : "Unknown invitation error",
+      }));
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
   async function handleZoneSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setCreatingZone(true)
+    event.preventDefault();
+    setCreatingZone(true);
 
     try {
       await requestJson<{ ok: boolean; zone: Zone; provider?: { name: string; zoneId: string } }>(
-        '/api/zones',
+        "/api/zones",
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'content-type': 'application/json',
+            "content-type": "application/json",
           },
           body: JSON.stringify({ name: zoneName }),
         },
-      )
+      );
 
-      await loadDashboard()
-      setZoneName('new-zone.example.com')
+      await loadDashboard();
+      setZoneName("new-zone.example.com");
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'Unknown zone creation error',
-      }))
+        error: error instanceof Error ? error.message : "Unknown zone creation error",
+      }));
     } finally {
-      setCreatingZone(false)
+      setCreatingZone(false);
     }
   }
 
   async function handleOrganizationChange(nextOrganizationId: string) {
-    setActiveOrganizationId(nextOrganizationId)
+    setActiveOrganizationId(nextOrganizationId);
 
     try {
       await requestJson<{ ok: boolean; activeOrganization: ActiveOrganization }>(
-        '/api/session/active-organization',
+        "/api/session/active-organization",
         {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ organizationId: nextOrganizationId }),
         },
-      )
-      await loadDashboard()
+      );
+      await loadDashboard();
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'Unknown organization change error',
-      }))
+        error: error instanceof Error ? error.message : "Unknown organization change error",
+      }));
     }
   }
 
   async function handleRevokeInvitation(invitationId: string) {
-    setRevokingInvitationId(invitationId)
+    setRevokingInvitationId(invitationId);
 
     try {
       await requestJson<{ ok: boolean; invitation: Invitation }>(
         `/api/invitations/${invitationId}/revoke`,
         {
-          method: 'POST',
+          method: "POST",
         },
-      )
-      await loadDashboard()
+      );
+      await loadDashboard();
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'Unknown revoke invitation error',
-      }))
+        error: error instanceof Error ? error.message : "Unknown revoke invitation error",
+      }));
     } finally {
-      setRevokingInvitationId(null)
+      setRevokingInvitationId(null);
     }
   }
 
@@ -328,7 +329,7 @@ function App() {
                     <p>{organization.slug}</p>
                   </div>
                   <span className="pill">
-                    {organization.id === state.activeOrganization?.id ? 'active' : 'available'}
+                    {organization.id === state.activeOrganization?.id ? "active" : "available"}
                   </span>
                 </li>
               ))}
@@ -371,14 +372,14 @@ function App() {
                   </div>
                   <div className="actions-row">
                     <span className="pill">{invitation.role}</span>
-                    {invitation.status === 'pending' ? (
+                    {invitation.status === "pending" ? (
                       <button
                         type="button"
                         className="secondary-button"
                         onClick={() => void handleRevokeInvitation(invitation.id)}
                         disabled={revokingInvitationId === invitation.id}
                       >
-                        {revokingInvitationId === invitation.id ? 'Revoking...' : 'Revoke'}
+                        {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
                       </button>
                     ) : null}
                   </div>
@@ -422,7 +423,7 @@ function App() {
               </label>
 
               <button type="submit" disabled={creatingZone}>
-                {creatingZone ? 'Creating...' : 'Create zone'}
+                {creatingZone ? "Creating..." : "Create zone"}
               </button>
             </form>
           </section>
@@ -445,7 +446,7 @@ function App() {
                 Role
                 <select
                   value={inviteRole}
-                  onChange={(event) => setInviteRole(event.target.value as 'admin' | 'user')}
+                  onChange={(event) => setInviteRole(event.target.value as "admin" | "user")}
                 >
                   <option value="user">user</option>
                   <option value="admin">admin</option>
@@ -453,14 +454,14 @@ function App() {
               </label>
 
               <button type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : 'Create invitation'}
+                {submitting ? "Saving..." : "Create invitation"}
               </button>
             </form>
           </section>
         </div>
       ) : null}
     </main>
-  )
+  );
 }
 
-export default App
+export default App;
