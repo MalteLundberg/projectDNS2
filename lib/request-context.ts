@@ -109,6 +109,8 @@ export async function withRlsContext<T>(
 export async function getRequestContext(req: VercelRequest): Promise<RequestContext> {
   const cookies = parseCookies(req.headers.cookie);
   const sessionToken = String(cookies.app_session ?? "").trim();
+  const query = (req.query ?? {}) as Record<string, string | string[] | undefined>;
+  const body = (req.body ?? {}) as { organizationId?: string };
 
   if (!sessionToken) {
     return {
@@ -160,9 +162,8 @@ export async function getRequestContext(req: VercelRequest): Promise<RequestCont
 
     const memberships = membershipsResult.rows as Membership[];
     const cookieOrganizationId = String(cookies.active_organization_id ?? "").trim();
-    const queryOrganizationId = String(getSingleValue(req.query.organizationId)).trim();
-    const body = req.body as { organizationId?: string } | undefined;
-    const bodyOrganizationId = String(body?.organizationId ?? "").trim();
+    const queryOrganizationId = String(getSingleValue(query.organizationId)).trim();
+    const bodyOrganizationId = String(body.organizationId ?? "").trim();
     const requestedOrganizationId =
       cookieOrganizationId || queryOrganizationId || bodyOrganizationId;
 
