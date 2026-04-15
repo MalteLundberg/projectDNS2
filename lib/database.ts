@@ -8,7 +8,7 @@ import {
   users,
   type invitationStatuses,
   type userRoles,
-} from "../db/schema";
+} from "../db/schema.js";
 
 let pool: Pool | undefined;
 

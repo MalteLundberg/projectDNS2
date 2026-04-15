@@ -3,7 +3,7 @@ import {
   createActiveOrganizationCookie,
   createSessionCookie,
   getRequestContext,
-} from "../lib/request-context";
+} from "../lib/request-context.js";
 
 export const config = {
   runtime: "nodejs",

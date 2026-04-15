@@ -1,6 +1,6 @@
 import type { VercelRequest } from "@vercel/node";
 import type { PoolClient, QueryResultRow } from "pg";
-import { getPool } from "./database";
+import { getPool } from "./database.js";
 
 type CurrentUser = {
   id: string;
