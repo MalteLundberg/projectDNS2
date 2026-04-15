@@ -1,29 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { Pool, type PoolClient } from "pg";
 import { Resend } from "resend";
+import {
+  queryWithRls,
+  requireRequestContext,
+  UnauthorizedError,
+} from "../../lib/request-context.ts";
 
 export const config = {
   runtime: "nodejs",
 };
-
-let pool: Pool | undefined;
-const FALLBACK_USER_EMAIL = "test@example.com";
-const FALLBACK_SESSION_TOKEN = "dev-test-session-token";
-
-function getPool() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set");
-  }
-
-  pool ??= new Pool({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  });
-
-  return pool;
-}
 
 function getSingleQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -31,25 +16,6 @@ function getSingleQueryValue(value: string | string[] | undefined) {
   }
 
   return value ?? "";
-}
-
-function parseCookies(headerValue: string | undefined) {
-  const pairs = (headerValue ?? "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  return Object.fromEntries(
-    pairs.map((pair) => {
-      const separatorIndex = pair.indexOf("=");
-
-      if (separatorIndex === -1) {
-        return [pair, ""];
-      }
-
-      return [pair.slice(0, separatorIndex), decodeURIComponent(pair.slice(separatorIndex + 1))];
-    }),
-  );
 }
 
 function getResendApiKey() {
@@ -124,161 +90,44 @@ async function sendInvitationEmail(input: {
   return result.data;
 }
 
-async function getRequestContext(req: VercelRequest) {
-  const cookies = parseCookies(req.headers.cookie);
-  const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN;
-  const client = await getPool().connect();
-
-  try {
-    const currentUserResult = await client.query(
-      `select u.id, u.email, u.name
-       from user_sessions us
-       inner join users u on u.id = us.user_id
-       where us.session_token = $1 and us.expires_at > now()
-       limit 1`,
-      [sessionToken],
-    );
-    const currentUser =
-      currentUserResult.rows[0] ??
-      (
-        await client.query("select id, email, name from users where email = $1 limit 1", [
-          FALLBACK_USER_EMAIL,
-        ])
-      ).rows[0];
-
-    if (!currentUser) {
-      console.error("api/invitations could not resolve current user", {
-        sessionToken,
-        fallbackUserEmail: FALLBACK_USER_EMAIL,
-      });
-
-      return {
-        currentUser: null,
-        memberships: [],
-        activeOrganization: null,
-      };
-    }
-
-    await client.query("begin");
-    await client.query("select set_config('app.current_user_id', $1, true)", [currentUser.id]);
-
-    const membershipsResult = await client.query(
-      `select om.organization_id as "organizationId", om.role,
-              o.name as "organizationName", o.slug as "organizationSlug"
-       from organization_members om
-       inner join organizations o on o.id = om.organization_id
-       where om.user_id = $1
-       order by o.created_at asc`,
-      [currentUser.id],
-    );
-
-    await client.query("commit");
-
-    const memberships = membershipsResult.rows;
-    const requestedOrganizationId =
-      String(cookies.active_organization_id ?? "").trim() ||
-      String(getSingleQueryValue(req.query.organizationId)).trim() ||
-      String((req.body as { organizationId?: string } | undefined)?.organizationId ?? "").trim();
-
-    const activeOrganization =
-      memberships.find((membership) => membership.organizationId === requestedOrganizationId) ??
-      memberships[0] ??
-      null;
-
-    return {
-      currentUser,
-      memberships,
-      activeOrganization,
-    };
-  } catch (error) {
-    try {
-      await client.query("rollback");
-    } catch {
-      // Ignore rollback errors when no transaction is active.
-    }
-
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function withRlsContext<T>(
-  userId: string,
-  userEmail: string,
-  organizationId: string | null,
-  callback: (client: PoolClient) => Promise<T>,
-) {
-  const client = await getPool().connect();
-
-  try {
-    await client.query("begin");
-    await client.query("select set_config('app.current_user_id', $1, true)", [userId]);
-    await client.query("select set_config('app.current_user_email', $1, true)", [userEmail]);
-    await client.query("select set_config('app.current_organization_id', $1, true)", [
-      organizationId ?? "",
-    ]);
-
-    const result = await callback(client);
-
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const context = await getRequestContext(req);
-
-    if (!context.currentUser.id) {
-      res
-        .status(200)
-        .json({ ok: false, invitations: [], error: "Current user could not be resolved" });
-      return;
-    }
+    const context = await requireRequestContext(req);
 
     if (req.method === "GET") {
       const organizationId =
         String(getSingleQueryValue(req.query.organizationId)).trim() ||
-        context.activeOrganization.id;
+        context.activeOrganization?.id;
 
       if (!organizationId) {
         res.status(200).json({ ok: true, invitations: [] });
         return;
       }
 
-      const organizationResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
+      const organizationResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
         organizationId,
-        (client) =>
-          client.query("select id from organizations where id = $1 limit 1", [organizationId]),
-      );
+        text: "select id from organizations where id = $1 limit 1",
+        values: [organizationId],
+      });
 
       if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: "Organization not found" });
         return;
       }
 
-      const invitationsResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
+      const invitationsResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
         organizationId,
-        (client) =>
-          client.query(
-            `select id, organization_id as "organizationId", email, role, status,
-                  invited_by_user_id as "invitedByUserId", created_at as "createdAt"
-           from invitations
-           where organization_id = $1
-           order by created_at desc`,
-            [organizationId],
-          ),
-      );
+        text: `select id, organization_id as "organizationId", email, role, status,
+                      invited_by_user_id as "invitedByUserId", created_at as "createdAt"
+               from invitations
+               where organization_id = $1
+               order by created_at desc`,
+        values: [organizationId],
+      });
 
       res.status(200).json({ ok: true, invitations: invitationsResult.rows });
       return;
@@ -288,10 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { organizationId, email, role } = req.body ?? {};
 
       if (!email || !role) {
-        res.status(400).json({
-          ok: false,
-          error: "email and role are required",
-        });
+        res.status(400).json({ ok: false, error: "email and role are required" });
         return;
       }
 
@@ -301,7 +147,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const normalizedOrganizationId = String(
-        organizationId ?? context.activeOrganization.id,
+        organizationId ?? context.activeOrganization?.id,
       ).trim();
       const activeMembership = context.memberships.find(
         (membership) => membership.organizationId === normalizedOrganizationId,
@@ -314,51 +160,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
 
-      const organizationResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
-        normalizedOrganizationId,
-        (client) =>
-          client.query("select id from organizations where id = $1 limit 1", [
-            normalizedOrganizationId,
-          ]),
-      );
+      const organizationResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
+        organizationId: normalizedOrganizationId,
+        text: "select id from organizations where id = $1 limit 1",
+        values: [normalizedOrganizationId],
+      });
 
       if (organizationResult.rowCount === 0) {
         res.status(404).json({ ok: false, error: "Organization not found" });
         return;
       }
 
-      const inviterMembershipResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
-        normalizedOrganizationId,
-        (client) =>
-          client.query(
-            "select id from organization_members where organization_id = $1 and user_id = $2 limit 1",
-            [normalizedOrganizationId, context.currentUser.id],
-          ),
-      );
+      const inviterMembershipResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
+        organizationId: normalizedOrganizationId,
+        text: "select id from organization_members where organization_id = $1 and user_id = $2 limit 1",
+        values: [normalizedOrganizationId, context.currentUser.id],
+      });
 
       if (inviterMembershipResult.rowCount === 0) {
         res.status(403).json({ ok: false, error: "Inviter is not a member of the organization" });
         return;
       }
 
-      const existingInvitationResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
-        normalizedOrganizationId,
-        (client) =>
-          client.query(
-            `select id, status
-           from invitations
-           where organization_id = $1 and email = $2
-           order by created_at desc
-           limit 1`,
-            [normalizedOrganizationId, String(email).trim()],
-          ),
-      );
+      const existingInvitationResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
+        organizationId: normalizedOrganizationId,
+        text: `select id, status
+               from invitations
+               where organization_id = $1 and email = $2
+               order by created_at desc
+               limit 1`,
+        values: [normalizedOrganizationId, String(email).trim()],
+      });
 
       const existingInvitation = existingInvitationResult.rows[0];
 
@@ -369,19 +207,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
 
-      const invitationResult = await withRlsContext(
-        context.currentUser.id,
-        context.currentUser.email,
-        normalizedOrganizationId,
-        (client) =>
-          client.query(
-            `insert into invitations (organization_id, email, role, status, invited_by_user_id)
-           values ($1, $2, $3, 'pending', $4)
-           returning id, organization_id as "organizationId", email, role, status,
-                     invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
-            [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
-          ),
-      );
+      const invitationResult = await queryWithRls({
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
+        organizationId: normalizedOrganizationId,
+        text: `insert into invitations (organization_id, email, role, status, invited_by_user_id)
+               values ($1, $2, $3, 'pending', $4)
+               returning id, organization_id as "organizationId", email, role, status,
+                         invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
+        values: [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
+      });
 
       const invitation = invitationResult.rows[0];
       let mail = {
@@ -426,6 +261,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.status(405).json({ ok: false, error: "Method not allowed" });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      res.status(401).json({ ok: false, invitations: [], error: error.message });
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Unknown invitations error";
     console.error("api/invitations failed", {
       method: req.method,

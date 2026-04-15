@@ -82,10 +82,10 @@ async function runHandler(handler: LocalHandler, req: MockRequest): Promise<Json
 }
 
 function getHeaders(req: http.IncomingMessage) {
+  const devSessionCookie = process.env.DEV_SESSION_COOKIE;
+
   return {
-    cookie:
-      req.headers.cookie ??
-      "app_session=dev-test-session-token; active_organization_id=75757080-781e-4039-8443-52d825a41568",
+    cookie: req.headers.cookie ?? devSessionCookie,
   };
 }
 

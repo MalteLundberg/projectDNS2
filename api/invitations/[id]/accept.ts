@@ -1,28 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { Pool, type PoolClient } from "pg";
+import {
+  queryWithRls,
+  requireRequestContext,
+  UnauthorizedError,
+} from "../../../lib/request-context.ts";
 
 export const config = {
   runtime: "nodejs",
 };
-
-let pool: Pool | undefined;
-const FALLBACK_USER_EMAIL = "test@example.com";
-const FALLBACK_SESSION_TOKEN = "dev-test-session-token";
-
-function getPool() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set");
-  }
-
-  pool ??= new Pool({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  });
-
-  return pool;
-}
 
 function getSingleQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -32,80 +17,6 @@ function getSingleQueryValue(value: string | string[] | undefined) {
   return value ?? "";
 }
 
-function parseCookies(headerValue: string | undefined) {
-  const pairs = (headerValue ?? "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  return Object.fromEntries(
-    pairs.map((pair) => {
-      const separatorIndex = pair.indexOf("=");
-
-      if (separatorIndex === -1) {
-        return [pair, ""];
-      }
-
-      return [pair.slice(0, separatorIndex), decodeURIComponent(pair.slice(separatorIndex + 1))];
-    }),
-  );
-}
-
-async function getCurrentUser(req: VercelRequest) {
-  const cookies = parseCookies(req.headers.cookie);
-  const sessionToken = cookies.app_session || FALLBACK_SESSION_TOKEN;
-  const client = await getPool().connect();
-
-  try {
-    const currentUserResult = await client.query(
-      `select u.id, u.email, u.name
-       from user_sessions us
-       inner join users u on u.id = us.user_id
-       where us.session_token = $1 and us.expires_at > now()
-       limit 1`,
-      [sessionToken],
-    );
-
-    return (
-      currentUserResult.rows[0] ??
-      (
-        await client.query("select id, email, name from users where email = $1 limit 1", [
-          FALLBACK_USER_EMAIL,
-        ])
-      ).rows[0] ??
-      null
-    );
-  } finally {
-    client.release();
-  }
-}
-
-async function withRlsContext<T>(
-  userId: string,
-  userEmail: string,
-  organizationId: string | null,
-  callback: (client: PoolClient) => Promise<T>,
-) {
-  const client = await getPool().connect();
-
-  try {
-    await client.query("begin");
-    await client.query("select set_config('app.current_user_id', $1, true)", [userId]);
-    await client.query("select set_config('app.current_user_email', $1, true)", [userEmail]);
-    await client.query("select set_config('app.current_organization_id', $1, true)", [
-      organizationId ?? "",
-    ]);
-    const result = await callback(client);
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") {
@@ -113,13 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const currentUser = await getCurrentUser(req);
-
-    if (!currentUser?.id) {
-      res.status(200).json({ ok: false, error: "Current user could not be resolved" });
-      return;
-    }
-
+    const context = await requireRequestContext(req);
+    const currentUser = context.currentUser;
     const invitationId = String(getSingleQueryValue(req.query.id)).trim();
 
     if (!invitationId) {
@@ -127,19 +33,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const invitationLookup = await withRlsContext(
-      currentUser.id,
-      currentUser.email,
-      null,
-      (client) =>
-        client.query(
-          `select id, organization_id as "organizationId", email, role, status
-         from invitations
-         where id = $1
-         limit 1`,
-          [invitationId],
-        ),
-    );
+    const invitationLookup = await queryWithRls({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      text: `select id, organization_id as "organizationId", email, role, status
+             from invitations
+             where id = $1
+             limit 1`,
+      values: [invitationId],
+    });
 
     const invitation = invitationLookup.rows[0];
 
@@ -158,56 +60,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const result = await withRlsContext(
-      currentUser.id,
-      currentUser.email,
-      invitation.organizationId,
-      async (client) => {
-        const membershipResult = await client.query(
-          `select id, role
-         from organization_members
-         where organization_id = $1 and user_id = $2
-         limit 1`,
-          [invitation.organizationId, currentUser.id],
-        );
+    const result = await queryWithRls({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      organizationId: invitation.organizationId,
+      text: `with existing_membership as (
+               select id, organization_id as "organizationId", user_id as "userId", role,
+                      created_at as "createdAt"
+               from organization_members
+               where organization_id = $1 and user_id = $2
+               limit 1
+             ), inserted_membership as (
+               insert into organization_members (organization_id, user_id, role)
+               select $1, $2, $3
+               where not exists (select 1 from existing_membership)
+               on conflict (organization_id, user_id) do nothing
+               returning id, organization_id as "organizationId", user_id as "userId", role,
+                         created_at as "createdAt"
+             ), accepted_invitation as (
+               update invitations
+               set status = 'accepted'
+               where id = $4 and status = 'pending'
+               returning id, organization_id as "organizationId", email, role, status,
+                         invited_by_user_id as "invitedByUserId", created_at as "createdAt"
+             )
+             select row_to_json(accepted_invitation.*) as invitation,
+                    row_to_json(coalesce(inserted_membership, existing_membership)) as membership
+             from accepted_invitation
+             left join inserted_membership on true
+             left join existing_membership on inserted_membership.id is null`,
+      values: [invitation.organizationId, currentUser.id, invitation.role, invitationId],
+    });
 
-        const membership =
-          membershipResult.rows[0] ??
-          (
-            await client.query(
-              `insert into organization_members (organization_id, user_id, role)
-             values ($1, $2, $3)
-             on conflict (organization_id, user_id) do nothing
-             returning id, organization_id as "organizationId", user_id as "userId", role, created_at as "createdAt"`,
-              [invitation.organizationId, currentUser.id, invitation.role],
-            )
-          ).rows[0];
+    const payload = result.rows[0] as
+      | {
+          invitation: Record<string, unknown> | null;
+          membership: Record<string, unknown> | null;
+        }
+      | undefined;
 
-        const acceptedInvitationResult = await client.query(
-          `update invitations
-         set status = 'accepted'
-         where id = $1 and status = 'pending'
-         returning id, organization_id as "organizationId", email, role, status,
-                   invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
-          [invitationId],
-        );
-
-        return {
-          membership: membership ?? membershipResult.rows[0] ?? null,
-          invitation: acceptedInvitationResult.rows[0] ?? null,
-        };
-      },
-    );
-
-    if (!result.invitation) {
+    if (!payload?.invitation) {
       res.status(409).json({ ok: false, error: "Invitation could not be accepted" });
       return;
     }
 
     res
       .status(200)
-      .json({ ok: true, invitation: result.invitation, membership: result.membership });
+      .json({ ok: true, invitation: payload.invitation, membership: payload.membership });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      res.status(401).json({ ok: false, error: error.message });
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Unknown accept invitation error";
     console.error("api/invitations/[id]/accept failed", {
       method: req.method,
