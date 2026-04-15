@@ -1,8 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import {
-  createActiveOrganizationCookie,
-  requireRequestContext,
-} from "../../lib/request-context.ts";
+import { createActiveOrganizationCookie, requireRequestContext } from "../../lib/request-context";
 
 export const config = {
   runtime: "nodejs",

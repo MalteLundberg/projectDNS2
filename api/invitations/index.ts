@@ -1,10 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import {
-  queryWithRls,
-  requireRequestContext,
-  UnauthorizedError,
-} from "../../lib/request-context.ts";
+import { queryWithRls, requireRequestContext, UnauthorizedError } from "../../lib/request-context";
 
 export const config = {
   runtime: "nodejs",

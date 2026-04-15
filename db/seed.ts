@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { getDb, getPool } from "../lib/database.ts";
-import { organizationMembers, organizations, users } from "./schema.ts";
+import { getDb, getPool } from "../lib/database";
+import { organizationMembers, organizations, users } from "./schema";
 
 const TEST_SESSION_TOKEN = "dev-test-session-token";
 const SECOND_SESSION_TOKEN = "dev-second-session-token";
