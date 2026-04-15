@@ -1,6 +1,26 @@
 # projectDNS2
 
-Minimal grund för `Vite + React + TypeScript` i frontend och `Vercel serverless` i backend, med Neon PostgreSQL via `DATABASE_URL`.
+Minimal grund för `Vite+ + React + TypeScript` i frontend och `Vercel serverless` i backend, med Neon PostgreSQL via `DATABASE_URL`.
+
+## Vite+ toolchain
+
+Projektet använder nu `Vite+` som primär toolchain för frontend-workflow.
+
+- `vp dev` for frontend-devserver
+- `vp build` for frontend-build
+- `vp preview` for preview av frontend-build
+- `vp check` for formattering, lint och type-aware checks via Vite+
+- `vp lint` for enbart Vite+-lint
+- `vp fmt` for enbart Vite+-formattering
+
+Den nuvarande apparkitekturen är oförändrad:
+
+- React SPA i `src/`
+- Vercel serverless API i `api/`
+- lokal backend/devserver i `server/dev-server.ts`
+- Neon/PostgreSQL + Drizzle + RLS i backendlagret
+
+Minimal migrering betyder här att projektstrukturen, backendupplägget och affärslogiken är bevarade, medan dev/build/check för frontend nu går via `Vite+`.
 
 ## Nuvarande scope
 
@@ -27,6 +47,7 @@ Det här steget har ocksa lagt till verkligt app-side db-context per request via
 
 - `react`, `react-dom`
 - `vite`
+- `vite-plus`
 - `typescript`
 - `pg`
 - `drizzle-orm`
@@ -200,7 +221,44 @@ npm install
 cp .env.example .env
 npm run db:migrate
 npm run db:seed
+npm run dev
 npm run dev:local
+```
+
+## Dagliga kommandon
+
+Frontend och toolchain:
+
+```bash
+npm run dev
+npm run build
+npm run preview
+npm run check
+npm run lint
+npm run fmt
+npm run typecheck
+```
+
+Databas och lokal backend:
+
+```bash
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run db:verify-rls
+npm run dev:local
+npm run dev:vercel
+```
+
+Direkt med Vite+:
+
+```bash
+vp dev
+vp build
+vp preview
+vp check
+vp lint
+vp fmt
 ```
 
 ## Session och tenant cookies
@@ -377,7 +435,10 @@ npm run db:migrate
 npm run db:seed
 npm run db:verify-rls
 npm run build
+npm run check
 npm run lint
+npm run typecheck
+npm run dev
 npm run dev:local
 ```
 

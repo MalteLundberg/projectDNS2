@@ -4,16 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vp dev",
     "dev:vercel": "vercel dev",
     "dev:local": "tsx --env-file=.env server/dev-server.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx --env-file=.env db/seed.ts",
     "db:verify-rls": "tsx --env-file=.env db/verify-rls.ts",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "build": "vp build",
+    "preview": "vp preview",
+    "check": "vp check",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
@@ -39,6 +42,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
     "vercel": "^50.42.0",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vite-plus": "^0.1.18"
   }
 }
