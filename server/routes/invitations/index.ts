@@ -186,39 +186,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
 
+      const normalizedEmail = String(email).trim().toLowerCase();
+
       const existingInvitationResult = await queryWithRls({
         userId: context.currentUser.id,
         userEmail: context.currentUser.email,
         organizationId: normalizedOrganizationId,
-        text: `select id, status
+        text: `select id, organization_id as "organizationId", email, role, status,
+                      invited_by_user_id as "invitedByUserId", created_at as "createdAt"
                from invitations
-               where organization_id = $1 and email = $2
+               where organization_id = $1 and lower(email) = $2
                order by created_at desc
                limit 1`,
-        values: [normalizedOrganizationId, String(email).trim()],
+        values: [normalizedOrganizationId, normalizedEmail],
       });
 
-      const existingInvitation = existingInvitationResult.rows[0];
+      const existingInvitation = existingInvitationResult.rows[0] as
+        | {
+            id: string;
+            organizationId: string;
+            email: string;
+            role: "admin" | "user";
+            status: string;
+            invitedByUserId: string;
+            createdAt: string;
+          }
+        | undefined;
 
-      if (existingInvitation?.status === "pending") {
-        res
-          .status(409)
-          .json({ ok: false, error: "A pending invitation already exists for this email" });
-        return;
-      }
-
-      const invitationResult = await queryWithRls({
-        userId: context.currentUser.id,
-        userEmail: context.currentUser.email,
-        organizationId: normalizedOrganizationId,
-        text: `insert into invitations (organization_id, email, role, status, invited_by_user_id)
-               values ($1, $2, $3, 'pending', $4)
-               returning id, organization_id as "organizationId", email, role, status,
-                         invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
-        values: [normalizedOrganizationId, String(email).trim(), role, context.currentUser.id],
-      });
-
-      const invitation = invitationResult.rows[0];
+      const invitation =
+        existingInvitation?.status === "pending"
+          ? existingInvitation
+          : (
+              await queryWithRls({
+                userId: context.currentUser.id,
+                userEmail: context.currentUser.email,
+                organizationId: normalizedOrganizationId,
+                text: `insert into invitations (organization_id, email, role, status, invited_by_user_id)
+                       values ($1, $2, $3, 'pending', $4)
+                       returning id, organization_id as "organizationId", email, role, status,
+                                 invited_by_user_id as "invitedByUserId", created_at as "createdAt"`,
+                values: [normalizedOrganizationId, normalizedEmail, role, context.currentUser.id],
+              })
+            ).rows[0];
       let mail = {
         sent: false as boolean,
         id: null as string | null,
@@ -229,8 +238,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const emailResult = await sendInvitationEmail({
           organizationName: activeMembership.organizationName,
           inviterName: context.currentUser.name,
-          inviteeEmail: String(email).trim(),
-          role,
+          inviteeEmail: invitation.email,
+          role: invitation.role,
         });
 
         mail = {
