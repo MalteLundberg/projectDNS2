@@ -133,9 +133,16 @@ function App() {
   const [recordTtl, setRecordTtl] = useState("3600");
   const [savingRecord, setSavingRecord] = useState(false);
   const [deletingRecordKey, setDeletingRecordKey] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState("test@example.com");
+  const [loginName, setLoginName] = useState("Test User");
+  const [sendingLoginLink, setSendingLoginLink] = useState(false);
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState("My Organization");
+  const [creatingOrganization, setCreatingOrganization] = useState(false);
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
+    setLoginMessage(null);
 
     try {
       const sessionResponse = await requestJson<{
@@ -261,6 +268,77 @@ function App() {
       }));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSendingLoginLink(true);
+    setLoginMessage(null);
+
+    try {
+      const response = await requestJson<{
+        ok: boolean;
+        email: string;
+        inviteOrganizationName: string | null;
+      }>("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: loginEmail,
+          name: loginName,
+        }),
+      });
+
+      setLoginMessage(
+        response.inviteOrganizationName
+          ? `Login link sent to ${response.email}. It will sign you in and let you join ${response.inviteOrganizationName}.`
+          : `Login link sent to ${response.email}.`,
+      );
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown login error",
+      }));
+    } finally {
+      setSendingLoginLink(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await requestJson<{ ok: boolean }>("/api/auth/logout", {
+        method: "POST",
+      });
+      setSelectedZoneId("");
+      setRecords([]);
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown logout error",
+      }));
+    }
+  }
+
+  async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingOrganization(true);
+
+    try {
+      await requestJson<{ ok: boolean; organization: Organization }>("/api/onboarding", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ organizationName }),
+      });
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown onboarding error",
+      }));
+    } finally {
+      setCreatingOrganization(false);
     }
   }
 
@@ -488,6 +566,67 @@ function App() {
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
       {state.loading ? <p className="banner">Laddar dashboard...</p> : null}
 
+      {!state.loading && !state.currentUser ? (
+        <section className="panel panel--highlight">
+          <p className="panel__label">Sign in</p>
+          <h2>Passwordless email login</h2>
+          <p className="intro">
+            Ange din email for att fa en sign-in länk. Om du har en invitation kommer den att kunna
+            accepteras efter inloggning.
+          </p>
+          <form className="form" onSubmit={(event) => void handleLoginSubmit(event)}>
+            <label>
+              Name
+              <input
+                value={loginName}
+                onChange={(event) => setLoginName(event.target.value)}
+                type="text"
+              />
+            </label>
+
+            <label>
+              Email
+              <input
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                type="email"
+                required
+              />
+            </label>
+
+            <button type="submit" disabled={sendingLoginLink}>
+              {sendingLoginLink ? "Sending..." : "Send sign-in link"}
+            </button>
+          </form>
+          {loginMessage ? <p className="banner">{loginMessage}</p> : null}
+        </section>
+      ) : null}
+
+      {!state.loading && state.currentUser && !state.activeOrganization ? (
+        <section className="panel panel--highlight">
+          <p className="panel__label">Onboarding</p>
+          <h2>Create your first organization</h2>
+          <p className="intro">
+            Ditt konto ar inloggat men saknar organization. Skapa en for att komma in i dashboarden.
+          </p>
+          <form className="form" onSubmit={(event) => void handleCreateOrganization(event)}>
+            <label>
+              Organization name
+              <input
+                value={organizationName}
+                onChange={(event) => setOrganizationName(event.target.value)}
+                type="text"
+                required
+              />
+            </label>
+
+            <button type="submit" disabled={creatingOrganization}>
+              {creatingOrganization ? "Creating..." : "Create organization"}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
       {state.currentUser && state.activeOrganization ? (
         <div className="dashboard-grid">
           <section className="panel panel--highlight">
@@ -495,6 +634,9 @@ function App() {
             <h2>{state.currentUser.name}</h2>
             <p>{state.currentUser.email}</p>
             <code>{state.currentUser.id}</code>
+            <button type="button" className="secondary-button" onClick={() => void handleLogout()}>
+              Sign out
+            </button>
           </section>
 
           <section className="panel panel--highlight">

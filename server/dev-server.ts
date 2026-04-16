@@ -5,13 +5,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import healthHandler from "../api/health.js";
 import dbCheckHandler from "../api/db-check.js";
+import authLoginHandler from "../api/auth/login.js";
+import authLogoutHandler from "../api/auth/logout.js";
+import authVerifyHandler from "../api/auth/verify.js";
 import invitationsHandler from "../api/invitations/index.js";
 import acceptInvitationHandler from "../api/invitations/[id]/accept.js";
 import revokeInvitationHandler from "../api/invitations/[id]/revoke.js";
+import onboardingHandler from "../api/onboarding.js";
 import organizationMembersHandler from "../api/organizations/[id]/members.js";
 import organizationsHandler from "../api/organizations/index.js";
 import sessionHandler from "../api/session.js";
 import activeOrganizationHandler from "../api/session/active-organization.js";
+import zoneRecordsHandler from "../api/zones/[id]/records.js";
 import zonesHandler from "../api/zones/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +28,7 @@ type JsonResponse = {
   statusCode: number;
   payload: unknown;
   headers?: Record<string, string | string[]>;
+  redirectLocation?: string;
 };
 
 type MockRequest = {
@@ -37,6 +43,8 @@ type LocalHandler = (
   res: {
     status: (code: number) => { json: (body: unknown) => void };
     setHeader: (name: string, value: string | string[]) => void;
+    writeHead: (statusCode: number, headers: Record<string, string>) => void;
+    end: (body?: string) => void;
   },
 ) => void | Promise<void>;
 
@@ -75,6 +83,17 @@ async function runHandler(handler: LocalHandler, req: MockRequest): Promise<Json
     setHeader(name: string, value: string | string[]) {
       response.headers ??= {};
       response.headers[name] = value;
+    },
+    writeHead(statusCode: number, headers: Record<string, string>) {
+      response.statusCode = statusCode;
+      response.headers ??= {};
+      Object.assign(response.headers, headers);
+      if (headers.Location) {
+        response.redirectLocation = headers.Location;
+      }
+    },
+    end(body?: string) {
+      response.payload = body ?? response.payload;
     },
   });
 
@@ -141,6 +160,55 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/api/auth/login") {
+    const response = await runHandler(authLoginHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === "POST" ? await parseBody(req) : undefined,
+    });
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
+  if (pathname === "/api/auth/logout") {
+    const response = await runHandler(authLogoutHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === "POST" ? await parseBody(req) : undefined,
+    });
+    if (response.headers) {
+      for (const [name, value] of Object.entries(response.headers)) {
+        res.setHeader(name, value);
+      }
+    }
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
+  if (pathname === "/api/auth/verify") {
+    const response = await runHandler(authVerifyHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+    });
+    if (response.headers) {
+      for (const [name, value] of Object.entries(response.headers)) {
+        res.setHeader(name, value);
+      }
+    }
+    if (response.statusCode === 302) {
+      res.writeHead(302, {
+        Location: typeof response.headers?.Location === "string" ? response.headers.Location : "/",
+      });
+      res.end();
+      return;
+    }
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
   if (pathname === "/api/session/active-organization") {
     const response = await runHandler(activeOrganizationHandler as unknown as LocalHandler, {
       method,
@@ -159,6 +227,17 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/api/organizations") {
     const response = await runHandler(organizationsHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === "POST" ? await parseBody(req) : undefined,
+    });
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
+  if (pathname === "/api/onboarding") {
+    const response = await runHandler(onboardingHandler as unknown as LocalHandler, {
       method,
       query,
       headers,
@@ -198,6 +277,22 @@ const server = http.createServer(async (req, res) => {
     const response = await runHandler(zonesHandler as unknown as LocalHandler, {
       method,
       query,
+      headers,
+      body: method === "POST" ? await parseBody(req) : undefined,
+    });
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
+  const zoneRecordsMatch = pathname.match(/^\/api\/zones\/([^/]+)\/records$/);
+
+  if (zoneRecordsMatch) {
+    const response = await runHandler(zoneRecordsHandler as unknown as LocalHandler, {
+      method,
+      query: {
+        ...query,
+        id: zoneRecordsMatch[1],
+      },
       headers,
       body: method === "POST" ? await parseBody(req) : undefined,
     });
