@@ -96,9 +96,9 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
     throw new Error(`Expected JSON but received: ${text.slice(0, 120)}`);
   }
 
-  const data = (await response.json()) as T & { error?: string };
+  const data = (await response.json()) as T & { error?: string; ok?: boolean };
 
-  if (!response.ok) {
+  if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? `Request failed with status ${response.status}`);
   }
 
