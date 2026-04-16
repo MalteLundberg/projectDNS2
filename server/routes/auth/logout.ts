@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createLogoutCookies, deleteSession } from "../../lib/auth.js";
-import { getRequestContext } from "../../lib/request-context.js";
+import { createLogoutCookies, deleteSession } from "../../../lib/auth.js";
+import { getRequestContext } from "../../../lib/request-context.js";
 
 export const config = {
   runtime: "nodejs",

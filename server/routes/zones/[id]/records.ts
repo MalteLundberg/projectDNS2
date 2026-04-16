@@ -3,14 +3,14 @@ import {
   queryWithRls,
   requireRequestContext,
   UnauthorizedError,
-} from "../../../lib/request-context.js";
+} from "../../../../lib/request-context.js";
 import {
   getZone,
   normalizeRecordName,
   patchZoneRecords,
   type PowerDnsRrset,
   ZoneApiError,
-} from "../../../lib/powerdns.js";
+} from "../../../../lib/powerdns.js";
 
 export const config = {
   runtime: "nodejs",

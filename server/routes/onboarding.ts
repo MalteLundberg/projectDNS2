@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { queryWithRls, requireRequestContext, UnauthorizedError } from "../lib/request-context.js";
+import {
+  queryWithRls,
+  requireRequestContext,
+  UnauthorizedError,
+} from "../../lib/request-context.js";
 
 export const config = {
   runtime: "nodejs",

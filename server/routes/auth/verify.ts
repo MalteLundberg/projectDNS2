@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { consumeLoginToken, createLoginSuccessCookies } from "../../lib/auth.js";
-import { getPool } from "../../lib/database.js";
+import { consumeLoginToken, createLoginSuccessCookies } from "../../../lib/auth.js";
+import { getPool } from "../../../lib/database.js";
 
 export const config = {
   runtime: "nodejs",

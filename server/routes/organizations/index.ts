@@ -3,7 +3,7 @@ import {
   queryWithRls,
   requireRequestContext,
   UnauthorizedError,
-} from "../../lib/request-context.js";
+} from "../../../lib/request-context.js";
 
 export const config = {
   runtime: "nodejs",

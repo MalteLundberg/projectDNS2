@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   createActiveOrganizationCookie,
   requireRequestContext,
-} from "../../lib/request-context.js";
+} from "../../../lib/request-context.js";
 
 export const config = {
   runtime: "nodejs",

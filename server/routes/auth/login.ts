@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { createLoginToken } from "../../lib/auth.js";
-import { getPool } from "../../lib/database.js";
+import { createLoginToken } from "../../../lib/auth.js";
+import { getPool } from "../../../lib/database.js";
 
 export const config = {
   runtime: "nodejs",
