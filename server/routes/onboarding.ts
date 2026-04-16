@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { randomUUID } from "node:crypto";
 import {
   requireRequestContext,
   UnauthorizedError,
@@ -69,23 +70,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         userEmail: context.currentUser.email,
       },
       async (client) => {
-        const organizationResult = await client.query(
-          `insert into organizations (name, slug, created_by_user_id)
-           values ($1, $2, $3)
-           returning id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"`,
-          [normalizedName, slug, context.currentUser.id],
+        const organizationId = randomUUID();
+
+        await client.query(
+          `insert into organizations (id, name, slug, created_by_user_id)
+           values ($1, $2, $3, $4)`,
+          [organizationId, normalizedName, slug, context.currentUser.id],
         );
 
-        const createdOrganization = organizationResult.rows[0];
-
         await client.query("select set_config('app.current_organization_id', $1, true)", [
-          createdOrganization.id,
+          organizationId,
         ]);
         await client.query(
           `insert into organization_members (organization_id, user_id, role)
            values ($1, $2, 'admin')`,
-          [createdOrganization.id, context.currentUser.id],
+          [organizationId, context.currentUser.id],
         );
+
+        const organizationResult = await client.query(
+          `select id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"
+           from organizations
+           where id = $1
+           limit 1`,
+          [organizationId],
+        );
+
+        const createdOrganization = organizationResult.rows[0];
+
+        if (!createdOrganization) {
+          throw new Error(
+            "Organization was created but could not be loaded after membership insert",
+          );
+        }
 
         return createdOrganization;
       },
