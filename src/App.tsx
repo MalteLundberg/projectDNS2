@@ -55,6 +55,16 @@ type Zone = {
   createdAt: string;
 };
 
+type RecordRow = {
+  name: string;
+  type: string;
+  ttl: number;
+  records: Array<{
+    content: string;
+    disabled?: boolean;
+  }>;
+};
+
 type DashboardState = {
   loading: boolean;
   error?: string;
@@ -114,6 +124,15 @@ function App() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [zoneName, setZoneName] = useState("example.com");
   const [creatingZone, setCreatingZone] = useState(false);
+  const [selectedZoneId, setSelectedZoneId] = useState("");
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [records, setRecords] = useState<RecordRow[]>([]);
+  const [recordName, setRecordName] = useState("@");
+  const [recordType, setRecordType] = useState("A");
+  const [recordContent, setRecordContent] = useState("127.0.0.1");
+  const [recordTtl, setRecordTtl] = useState("3600");
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [deletingRecordKey, setDeletingRecordKey] = useState<string | null>(null);
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -155,6 +174,7 @@ function App() {
         ]);
 
       setActiveOrganizationId(activeOrganization.id);
+      setSelectedZoneId((current) => current || zonesResponse.zones[0]?.id || "");
       setState({
         loading: false,
         currentUser: sessionResponse.currentUser,
@@ -181,6 +201,34 @@ function App() {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  useEffect(() => {
+    async function loadRecords() {
+      if (!selectedZoneId || !state.currentUser || !state.activeOrganization) {
+        setRecords([]);
+        return;
+      }
+
+      setRecordsLoading(true);
+
+      try {
+        const response = await requestJson<{ ok: boolean; rrsets: RecordRow[] }>(
+          `/api/zones/${selectedZoneId}/records`,
+        );
+        setRecords(response.rrsets);
+      } catch (error) {
+        setRecords([]);
+        setState((current) => ({
+          ...current,
+          error: error instanceof Error ? error.message : "Unknown record loading error",
+        }));
+      } finally {
+        setRecordsLoading(false);
+      }
+    }
+
+    void loadRecords();
+  }, [selectedZoneId, state.currentUser, state.activeOrganization]);
 
   async function handleInviteSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -241,6 +289,71 @@ function App() {
       }));
     } finally {
       setCreatingZone(false);
+    }
+  }
+
+  async function handleRecordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedZoneId) {
+      return;
+    }
+
+    setSavingRecord(true);
+
+    try {
+      const response = await requestJson<{ ok: boolean; rrsets: RecordRow[] }>(
+        `/api/zones/${selectedZoneId}/records`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: recordName,
+            type: recordType,
+            content: recordContent,
+            ttl: Number(recordTtl),
+          }),
+        },
+      );
+      setRecords(response.rrsets);
+      setRecordName("@");
+      setRecordType("A");
+      setRecordContent("127.0.0.1");
+      setRecordTtl("3600");
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown record create error",
+      }));
+    } finally {
+      setSavingRecord(false);
+    }
+  }
+
+  async function handleDeleteRecord(name: string, type: string, content: string) {
+    if (!selectedZoneId) {
+      return;
+    }
+
+    const key = `${name}:${type}:${content}`;
+    setDeletingRecordKey(key);
+
+    try {
+      const query = new URLSearchParams({ name, type, content }).toString();
+      const response = await requestJson<{ ok: boolean; rrsets: RecordRow[] }>(
+        `/api/zones/${selectedZoneId}/records?${query}`,
+        {
+          method: "DELETE",
+        },
+      );
+      setRecords(response.rrsets);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown record delete error",
+      }));
+    } finally {
+      setDeletingRecordKey(null);
     }
   }
 
@@ -526,10 +639,64 @@ function App() {
                     <strong>{zone.name}</strong>
                     <p>{zone.provider}</p>
                   </div>
-                  <code>{zone.powerdnsZoneId}</code>
+                  <div className="actions-row">
+                    <code>{zone.powerdnsZoneId}</code>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setSelectedZoneId(zone.id)}
+                    >
+                      {selectedZoneId === zone.id ? "Selected" : "Open records"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="panel">
+            <p className="panel__label">Zone records</p>
+            <h2>
+              {state.zones.find((zone) => zone.id === selectedZoneId)?.name ?? "Select a zone"}
+            </h2>
+            {recordsLoading ? <p>Laddar records...</p> : null}
+            {!recordsLoading && selectedZoneId ? (
+              <ul className="list">
+                {records.flatMap((rrset) =>
+                  rrset.records.map((record) => {
+                    const key = `${rrset.name}:${rrset.type}:${record.content}`;
+
+                    return (
+                      <li key={key} className="list__item">
+                        <div>
+                          <strong>
+                            {rrset.name} {rrset.type}
+                          </strong>
+                          <p>
+                            TTL {rrset.ttl} • {record.content}
+                          </p>
+                        </div>
+                        {isOrgAdmin ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              void handleDeleteRecord(rrset.name, rrset.type, record.content)
+                            }
+                            disabled={deletingRecordKey === key}
+                          >
+                            {deletingRecordKey === key ? "Deleting..." : "Delete"}
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  }),
+                )}
+              </ul>
+            ) : null}
+            {!recordsLoading && selectedZoneId && records.length === 0 ? (
+              <p>Inga records hittades for den valda zonen.</p>
+            ) : null}
           </section>
 
           <section className="panel">
@@ -548,6 +715,73 @@ function App() {
 
               <button type="submit" disabled={creatingZone || !isOrgAdmin}>
                 {creatingZone ? "Creating..." : "Create zone"}
+              </button>
+            </form>
+          </section>
+
+          <section className="panel">
+            <p className="panel__label">Create DNS record</p>
+            <h2>New record</h2>
+            <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
+              <label>
+                Zone
+                <select
+                  value={selectedZoneId}
+                  onChange={(event) => setSelectedZoneId(event.target.value)}
+                >
+                  <option value="">Select zone</option>
+                  {state.zones.map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Name
+                <input
+                  value={recordName}
+                  onChange={(event) => setRecordName(event.target.value)}
+                  type="text"
+                  required
+                />
+              </label>
+
+              <label>
+                Type
+                <select value={recordType} onChange={(event) => setRecordType(event.target.value)}>
+                  <option value="A">A</option>
+                  <option value="AAAA">AAAA</option>
+                  <option value="CNAME">CNAME</option>
+                  <option value="TXT">TXT</option>
+                  <option value="MX">MX</option>
+                </select>
+              </label>
+
+              <label>
+                Content
+                <input
+                  value={recordContent}
+                  onChange={(event) => setRecordContent(event.target.value)}
+                  type="text"
+                  required
+                />
+              </label>
+
+              <label>
+                TTL
+                <input
+                  value={recordTtl}
+                  onChange={(event) => setRecordTtl(event.target.value)}
+                  type="number"
+                  min="1"
+                  required
+                />
+              </label>
+
+              <button type="submit" disabled={savingRecord || !isOrgAdmin || !selectedZoneId}>
+                {savingRecord ? "Saving..." : "Create record"}
               </button>
             </form>
           </section>
