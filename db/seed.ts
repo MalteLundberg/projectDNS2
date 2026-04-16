@@ -7,6 +7,7 @@ const SECOND_SESSION_TOKEN = "dev-second-session-token";
 
 async function main() {
   const db = getDb();
+  const pool = getPool();
 
   const [existingUser] = await db
     .select()
@@ -34,16 +35,7 @@ async function main() {
 
   const organization =
     existingOrganization ??
-    (
-      await db
-        .insert(organizations)
-        .values({
-          name: "Test Organization",
-          slug: "test-organization",
-          createdByUserId: user.id,
-        })
-        .returning()
-    )[0];
+    (await createOrganization(user.id, "Test Organization", "test-organization"));
 
   const [existingMembership] = await db
     .select()
@@ -52,11 +44,7 @@ async function main() {
     .limit(1);
 
   if (!existingMembership) {
-    await db.insert(organizationMembers).values({
-      organizationId: organization.id,
-      userId: user.id,
-      role: "admin",
-    });
+    await createMembership(user.id, organization.id, user.id, "admin");
   }
 
   const [existingSecondUser] = await db
@@ -85,16 +73,7 @@ async function main() {
 
   const secondOrganization =
     existingSecondOrganization ??
-    (
-      await db
-        .insert(organizations)
-        .values({
-          name: "Second Organization",
-          slug: "second-organization",
-          createdByUserId: secondUser.id,
-        })
-        .returning()
-    )[0];
+    (await createOrganization(secondUser.id, "Second Organization", "second-organization"));
 
   const [existingSecondMembership] = await db
     .select()
@@ -103,14 +82,8 @@ async function main() {
     .limit(1);
 
   if (!existingSecondMembership) {
-    await db.insert(organizationMembers).values({
-      organizationId: secondOrganization.id,
-      userId: secondUser.id,
-      role: "admin",
-    });
+    await createMembership(secondUser.id, secondOrganization.id, secondUser.id, "admin");
   }
-
-  const pool = getPool();
 
   const existingSessionResult = await pool.query(
     "select id from user_sessions where session_token = $1 limit 1",
@@ -167,6 +140,72 @@ async function main() {
   );
 
   await pool.end();
+}
+
+async function createOrganization(userId: string, name: string, slug: string) {
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("begin");
+    await client.query("select set_config('app.current_user_id', $1, true)", [userId]);
+    const organizationResult = await client.query(
+      `insert into organizations (name, slug, created_by_user_id)
+       values ($1, $2, $3)
+       returning id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"`,
+      [name, slug, userId],
+    );
+    await client.query("commit");
+    return organizationResult.rows[0];
+  } catch (error) {
+    await client.query("rollback");
+
+    if (error && typeof error === "object" && "code" in error && error.code === "42501") {
+      const existingResult = await pool.query(
+        `select id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"
+         from organizations
+         where slug = $1
+         limit 1`,
+        [slug],
+      );
+
+      if (existingResult.rowCount !== 0) {
+        return existingResult.rows[0];
+      }
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function createMembership(
+  actorUserId: string,
+  organizationId: string,
+  targetUserId: string,
+  role: "admin" | "user",
+) {
+  const client = await getPool().connect();
+
+  try {
+    await client.query("begin");
+    await client.query("select set_config('app.current_user_id', $1, true)", [actorUserId]);
+    await client.query("select set_config('app.current_organization_id', $1, true)", [
+      organizationId,
+    ]);
+    await client.query(
+      `insert into organization_members (organization_id, user_id, role)
+       values ($1, $2, $3)`,
+      [organizationId, targetUserId, role],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 main().catch(async (error) => {

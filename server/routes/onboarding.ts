@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
-  queryWithRls,
   requireRequestContext,
   UnauthorizedError,
+  withRlsContext,
 } from "../../lib/request-context.js";
 
 export const config = {
@@ -47,12 +47,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let suffix = 1;
 
     while (true) {
-      const existing = await queryWithRls({
-        userId: context.currentUser.id,
-        userEmail: context.currentUser.email,
-        text: "select id from organizations where slug = $1 limit 1",
-        values: [slug],
-      });
+      const existing = await withRlsContext(
+        {
+          userId: context.currentUser.id,
+          userEmail: context.currentUser.email,
+        },
+        (client) => client.query("select id from organizations where slug = $1 limit 1", [slug]),
+      );
 
       if (existing.rowCount === 0) {
         break;
@@ -62,25 +63,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       slug = `${baseSlug}-${suffix}`;
     }
 
-    const organizationResult = await queryWithRls({
-      userId: context.currentUser.id,
-      userEmail: context.currentUser.email,
-      text: `insert into organizations (name, slug, created_by_user_id)
-             values ($1, $2, $3)
-             returning id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"`,
-      values: [normalizedName, slug, context.currentUser.id],
-    });
+    const organization = await withRlsContext(
+      {
+        userId: context.currentUser.id,
+        userEmail: context.currentUser.email,
+      },
+      async (client) => {
+        const organizationResult = await client.query(
+          `insert into organizations (name, slug, created_by_user_id)
+           values ($1, $2, $3)
+           returning id, name, slug, created_by_user_id as "createdByUserId", created_at as "createdAt"`,
+          [normalizedName, slug, context.currentUser.id],
+        );
 
-    const organization = organizationResult.rows[0];
+        const createdOrganization = organizationResult.rows[0];
 
-    await queryWithRls({
-      userId: context.currentUser.id,
-      userEmail: context.currentUser.email,
-      organizationId: organization.id,
-      text: `insert into organization_members (organization_id, user_id, role)
-             values ($1, $2, 'admin')`,
-      values: [organization.id, context.currentUser.id],
-    });
+        await client.query("select set_config('app.current_organization_id', $1, true)", [
+          createdOrganization.id,
+        ]);
+        await client.query(
+          `insert into organization_members (organization_id, user_id, role)
+           values ($1, $2, 'admin')`,
+          [createdOrganization.id, context.currentUser.id],
+        );
+
+        return createdOrganization;
+      },
+    );
 
     res.status(201).json({ ok: true, organization });
   } catch (error) {

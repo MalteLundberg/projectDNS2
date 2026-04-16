@@ -29,27 +29,11 @@ function getAppBaseUrl() {
   return appUrl.startsWith("http") ? appUrl : `https://${appUrl}`;
 }
 
-export async function ensureLoginTokensTable() {
-  await getPool().query(`
-    create table if not exists login_tokens (
-      id uuid primary key default gen_random_uuid(),
-      email text not null,
-      name text,
-      token text not null unique,
-      invite_organization_id uuid references organizations(id) on delete set null,
-      expires_at timestamptz not null,
-      created_at timestamptz not null default now()
-    )
-  `);
-}
-
 export async function createLoginToken(input: {
   email: string;
   name?: string;
   inviteOrganizationId?: string | null;
 }) {
-  await ensureLoginTokensTable();
-
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + LOGIN_TOKEN_LIFETIME_MINUTES * 60 * 1000);
 
@@ -73,8 +57,6 @@ export async function createLoginToken(input: {
 }
 
 export async function consumeLoginToken(token: string) {
-  await ensureLoginTokensTable();
-
   const client = await getPool().connect();
 
   try {
