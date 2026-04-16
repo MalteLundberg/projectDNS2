@@ -67,6 +67,13 @@ type DashboardState = {
   zones: Zone[];
 };
 
+function isInvitationForCurrentUser(
+  invitation: Invitation,
+  currentUser: CurrentUser | null | undefined,
+) {
+  return invitation.email.toLowerCase() === (currentUser?.email ?? "").toLowerCase();
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: "include",
@@ -102,6 +109,9 @@ function App() {
   const [inviteRole, setInviteRole] = useState<"admin" | "user">("user");
   const [submitting, setSubmitting] = useState(false);
   const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
+  const [acceptingInvitationId, setAcceptingInvitationId] = useState<string | null>(null);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [zoneName, setZoneName] = useState("example.com");
   const [creatingZone, setCreatingZone] = useState(false);
 
@@ -276,6 +286,81 @@ function App() {
     }
   }
 
+  async function handleAcceptInvitation(invitationId: string) {
+    setAcceptingInvitationId(invitationId);
+
+    try {
+      await requestJson<{ ok: boolean; invitation: Invitation }>(
+        `/api/invitations/${invitationId}/accept`,
+        {
+          method: "POST",
+        },
+      );
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown accept invitation error",
+      }));
+    } finally {
+      setAcceptingInvitationId(null);
+    }
+  }
+
+  async function handleMemberRoleChange(memberId: string, role: "admin" | "user") {
+    if (!state.activeOrganization) {
+      return;
+    }
+
+    setUpdatingMemberId(memberId);
+
+    try {
+      await requestJson<{ ok: boolean; member: Member }>(
+        `/api/organizations/${state.activeOrganization.id}/members`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ memberId, role }),
+        },
+      );
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown member update error",
+      }));
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    if (!state.activeOrganization) {
+      return;
+    }
+
+    setRemovingMemberId(memberId);
+
+    try {
+      await requestJson<{ ok: boolean; member: Member | null }>(
+        `/api/organizations/${state.activeOrganization.id}/members?memberId=${memberId}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown member removal error",
+      }));
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }
+
+  const isOrgAdmin = state.activeOrganization?.role === "admin";
+
   return (
     <main className="app-shell">
       <div className="hero">
@@ -350,7 +435,35 @@ function App() {
                     <strong>{member.userName}</strong>
                     <p>{member.userEmail}</p>
                   </div>
-                  <span className="pill">{member.role}</span>
+                  <div className="actions-row">
+                    {isOrgAdmin ? (
+                      <select
+                        value={member.role}
+                        onChange={(event) =>
+                          void handleMemberRoleChange(
+                            member.id,
+                            event.target.value as "admin" | "user",
+                          )
+                        }
+                        disabled={updatingMemberId === member.id}
+                      >
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    ) : (
+                      <span className="pill">{member.role}</span>
+                    )}
+                    {isOrgAdmin && member.userId !== state.currentUser?.id ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleRemoveMember(member.id)}
+                        disabled={removingMemberId === member.id}
+                      >
+                        {removingMemberId === member.id ? "Removing..." : "Remove"}
+                      </button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -372,7 +485,18 @@ function App() {
                   </div>
                   <div className="actions-row">
                     <span className="pill">{invitation.role}</span>
-                    {invitation.status === "pending" ? (
+                    {invitation.status === "pending" &&
+                    isInvitationForCurrentUser(invitation, state.currentUser) ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleAcceptInvitation(invitation.id)}
+                        disabled={acceptingInvitationId === invitation.id}
+                      >
+                        {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
+                      </button>
+                    ) : null}
+                    {invitation.status === "pending" && isOrgAdmin ? (
                       <button
                         type="button"
                         className="secondary-button"
@@ -422,7 +546,7 @@ function App() {
                 />
               </label>
 
-              <button type="submit" disabled={creatingZone}>
+              <button type="submit" disabled={creatingZone || !isOrgAdmin}>
                 {creatingZone ? "Creating..." : "Create zone"}
               </button>
             </form>
@@ -453,7 +577,7 @@ function App() {
                 </select>
               </label>
 
-              <button type="submit" disabled={submitting}>
+              <button type="submit" disabled={submitting || !isOrgAdmin}>
                 {submitting ? "Saving..." : "Create invitation"}
               </button>
             </form>

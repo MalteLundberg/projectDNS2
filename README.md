@@ -353,6 +353,7 @@ grant select on user_sessions to projectdns2_app;
 grant select, insert on organizations to projectdns2_app;
 grant select, insert on organization_members to projectdns2_app;
 grant select, insert, update on invitations to projectdns2_app;
+grant select, insert on dns_zones to projectdns2_app;
 ```
 
 Kontrollera att tabellerna fortsatt ags av `neondb_owner` och inte av app-rollen:
@@ -362,6 +363,16 @@ select schemaname, tablename, tableowner
 from pg_tables
 where schemaname = 'public'
   and tablename in ('users', 'user_sessions', 'organizations', 'organization_members', 'invitations')
+order by tablename;
+```
+
+Om `dns_zones` ar migrerad i miljo:n, inkludera aven den i samma kontroll:
+
+```sql
+select schemaname, tablename, tableowner
+from pg_tables
+where schemaname = 'public'
+  and tablename in ('users', 'user_sessions', 'organizations', 'organization_members', 'invitations', 'dns_zones')
 order by tablename;
 ```
 
@@ -408,8 +419,12 @@ Forvantat resultat:
 - user A kan lasa `test-organization` men inte `second-organization`
 - user A kan lasa `invited.person@example.com` men inte `second-invite@example.com`
 - user A far tomt resultat for members i `second-organization`
+- user A kan bara lasa `dns_zones` for sin egen organization
 - user B kan lasa `second-organization` men inte `test-organization`
 - user B kan lasa `second-invite@example.com` men inte `invited.person@example.com`
+- user B kan bara lasa `dns_zones` for sin egen organization
+
+Om `dns_zones`-tabellen finns men inga zoner ar skapade annu ar ett tomt resultat fortfarande korrekt. Det viktiga i verifieringen ar att inga zoner fran en annan organization exponeras.
 
 ## Viktig begransning just nu
 
@@ -449,7 +464,7 @@ Scriptet satter:
 - `app.current_user_id`
 - `app.current_organization_id`
 
-och forsoker lasa `organizations`, `organization_members` och `invitations` som tva olika users.
+och forsoker lasa `organizations`, `organization_members`, `invitations` och `dns_zones` som tva olika users.
 
 Scriptet visar nu tydlig `overallPass: true/false` samt `expected` kontra `actual` for:
 

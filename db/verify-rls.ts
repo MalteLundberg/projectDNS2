@@ -2,10 +2,25 @@ import { Pool, type PoolClient } from "pg";
 
 type VerificationResult = {
   label: string;
+  organizationId: string;
   organizations: Array<{ id: string; slug: string }>;
   invitations: Array<{ organizationId: string; email: string }>;
+  dnsZones: Array<{ organizationId: string; name: string }>;
+  dnsZonesAvailable: boolean;
   secondOrgMembers?: Array<{ organizationId: string; userId: string }>;
 };
+
+async function hasDnsZonesTable(client: PoolClient) {
+  const result = await client.query(
+    `select exists (
+       select 1
+       from information_schema.tables
+       where table_schema = 'public' and table_name = 'dns_zones'
+     ) as exists`,
+  );
+
+  return Boolean(result.rows[0]?.exists);
+}
 
 async function runAsUser(
   client: PoolClient,
@@ -21,6 +36,12 @@ async function runAsUser(
   const invitations = await client.query(
     'select organization_id as "organizationId", email from invitations order by email',
   );
+  const dnsZonesAvailable = await hasDnsZonesTable(client);
+  const dnsZones = dnsZonesAvailable
+    ? await client.query(
+        'select organization_id as "organizationId", name from dns_zones order by name',
+      )
+    : { rows: [] };
 
   let secondOrgMembers: VerificationResult["secondOrgMembers"] | undefined;
 
@@ -36,8 +57,11 @@ async function runAsUser(
 
   return {
     label: input.label,
+    organizationId: input.organizationId,
     organizations: organizations.rows,
     invitations: invitations.rows,
+    dnsZones: dnsZones.rows,
+    dnsZonesAvailable,
     secondOrgMembers,
   };
 }
@@ -45,6 +69,11 @@ async function runAsUser(
 function summarize(result: VerificationResult) {
   const organizationSlugs = result.organizations.map((organization) => organization.slug);
   const invitationEmails = result.invitations.map((invitation) => invitation.email);
+  const dnsZoneNames = result.dnsZones.map((dnsZone) => dnsZone.name);
+  const dnsZoneOrganizationIds = result.dnsZones.map((dnsZone) => dnsZone.organizationId);
+  const dnsZonesPass =
+    !result.dnsZonesAvailable ||
+    dnsZoneOrganizationIds.every((organizationId) => organizationId === result.organizationId);
 
   if (result.label === "firstUser") {
     const pass =
@@ -52,6 +81,7 @@ function summarize(result: VerificationResult) {
       organizationSlugs[0] === "test-organization" &&
       invitationEmails.length === 1 &&
       invitationEmails[0] === "invited.person@example.com" &&
+      dnsZonesPass &&
       (result.secondOrgMembers?.length ?? 0) === 0;
 
     return {
@@ -59,11 +89,17 @@ function summarize(result: VerificationResult) {
       expected: {
         organizations: ["test-organization"],
         invitations: ["invited.person@example.com"],
+        dnsZones: result.dnsZonesAvailable
+          ? ["only zones owned by test-organization"]
+          : ["dns_zones table not present in this environment"],
         secondOrgMembers: [],
       },
       actual: {
         organizations: organizationSlugs,
         invitations: invitationEmails,
+        dnsZones: dnsZoneNames,
+        dnsZoneOrganizationIds,
+        dnsZonesAvailable: result.dnsZonesAvailable,
         secondOrgMembers: result.secondOrgMembers ?? [],
       },
     };
@@ -73,17 +109,24 @@ function summarize(result: VerificationResult) {
     organizationSlugs.length === 1 &&
     organizationSlugs[0] === "second-organization" &&
     invitationEmails.length === 1 &&
-    invitationEmails[0] === "second-invite@example.com";
+    invitationEmails[0] === "second-invite@example.com" &&
+    dnsZonesPass;
 
   return {
     pass,
     expected: {
       organizations: ["second-organization"],
       invitations: ["second-invite@example.com"],
+      dnsZones: result.dnsZonesAvailable
+        ? ["only zones owned by second-organization"]
+        : ["dns_zones table not present in this environment"],
     },
     actual: {
       organizations: organizationSlugs,
       invitations: invitationEmails,
+      dnsZones: dnsZoneNames,
+      dnsZoneOrganizationIds,
+      dnsZonesAvailable: result.dnsZonesAvailable,
     },
   };
 }
