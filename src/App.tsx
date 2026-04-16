@@ -247,7 +247,11 @@ function App() {
     setSubmitting(true);
 
     try {
-      await requestJson<{ ok: boolean; invitation: Invitation }>("/api/invitations", {
+      const response = await requestJson<{
+        ok: boolean;
+        invitation: Invitation;
+        mail?: { sent: boolean; id: string | null; error: string | null };
+      }>("/api/invitations", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -261,6 +265,13 @@ function App() {
       await loadDashboard();
       setInviteEmail("another.user@example.com");
       setInviteRole("user");
+      setState((current) => ({
+        ...current,
+        error:
+          response.mail && !response.mail.sent
+            ? `Invitation created, but email failed: ${response.mail.error ?? "Unknown mail error"}`
+            : undefined,
+      }));
     } catch (error) {
       setState((current) => ({
         ...current,
