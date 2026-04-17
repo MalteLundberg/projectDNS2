@@ -5,6 +5,18 @@ import { createActiveOrganizationCookie, createSessionCookie } from "./request-c
 const LOGIN_TOKEN_LIFETIME_MINUTES = 20;
 const SESSION_LIFETIME_SECONDS = 60 * 60 * 24 * 30;
 
+export class AuthFlowError extends Error {
+  code: string;
+  details?: unknown;
+
+  constructor(code: string, message: string, details?: unknown) {
+    super(message);
+    this.name = "AuthFlowError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
 export function createExpiredCookie(name: string, httpOnly = true) {
   const flags = ["Path=/", "Secure", "SameSite=Lax", "Max-Age=0"];
 
@@ -74,27 +86,41 @@ export async function consumeLoginToken(token: string) {
 
     if (!loginToken) {
       await client.query("rollback");
-      return null;
+      throw new AuthFlowError("TOKEN_INVALID_OR_EXPIRED", "Login link is invalid or expired");
     }
 
-    const userResult = await client.query(
-      `insert into users (email, name)
-       values ($1, $2)
-       on conflict (email)
-       do update set name = coalesce(users.name, excluded.name)
-       returning id, email, name`,
-      [loginToken.email.toLowerCase(), loginToken.name?.trim() || loginToken.email.split("@")[0]],
-    );
+    let userResult;
+
+    try {
+      userResult = await client.query(
+        `insert into users (email, name)
+         values ($1, $2)
+         on conflict (email)
+         do update set name = coalesce(users.name, excluded.name)
+         returning id, email, name`,
+        [loginToken.email.toLowerCase(), loginToken.name?.trim() || loginToken.email.split("@")[0]],
+      );
+    } catch (error) {
+      throw new AuthFlowError(
+        "USER_UPSERT_FAILED",
+        "Failed to create or load user during sign in",
+        error,
+      );
+    }
 
     const user = userResult.rows[0] as { id: string; email: string; name: string };
     const sessionToken = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + SESSION_LIFETIME_SECONDS * 1000).toISOString();
 
-    await client.query(
-      `insert into user_sessions (session_token, user_id, expires_at)
-       values ($1, $2, $3)`,
-      [sessionToken, user.id, expiresAt],
-    );
+    try {
+      await client.query(
+        `insert into user_sessions (session_token, user_id, expires_at)
+         values ($1, $2, $3)`,
+        [sessionToken, user.id, expiresAt],
+      );
+    } catch (error) {
+      throw new AuthFlowError("SESSION_CREATE_FAILED", "Failed to create user session", error);
+    }
 
     await client.query("commit");
 
@@ -105,7 +131,11 @@ export async function consumeLoginToken(token: string) {
     };
   } catch (error) {
     await client.query("rollback");
-    throw error;
+    if (error instanceof AuthFlowError) {
+      throw error;
+    }
+
+    throw new AuthFlowError("VERIFY_FLOW_FAILED", "Unhandled verify flow failure", error);
   } finally {
     client.release();
   }

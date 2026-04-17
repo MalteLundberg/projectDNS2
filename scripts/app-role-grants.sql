@@ -1,4 +1,4 @@
-grant select on users to projectdns2_app;
+grant select, insert, update on users to projectdns2_app;
 grant select, insert, delete on user_sessions to projectdns2_app;
 grant select, insert, delete on login_tokens to projectdns2_app;
 

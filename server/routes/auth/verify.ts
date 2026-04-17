@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { consumeLoginToken, createLoginSuccessCookies } from "../../../lib/auth.js";
+import { AuthFlowError, consumeLoginToken, createLoginSuccessCookies } from "../../../lib/auth.js";
 import { getPool } from "../../../lib/database.js";
 
 export const config = {
@@ -40,11 +40,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const loginResult = await consumeLoginToken(token);
 
-    if (!loginResult) {
-      res.status(400).send("Login link is invalid or expired");
-      return;
-    }
-
     let activeOrganizationId: string | null = loginResult.inviteOrganizationId ?? null;
 
     if (!activeOrganizationId) {
@@ -70,11 +65,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.writeHead(302, { Location: `${getRedirectBase().replace(/\/$/, "")}/` });
     res.end();
   } catch (error) {
+    const code = error instanceof AuthFlowError ? error.code : "VERIFY_UNHANDLED_ERROR";
+    const details = error instanceof AuthFlowError ? error.details : undefined;
     console.error("api/auth/verify failed", {
       method: req.method,
       query: req.query,
+      code,
+      details,
       error,
     });
+
+    if (error instanceof AuthFlowError && error.code === "TOKEN_INVALID_OR_EXPIRED") {
+      res.status(400).send(`${error.message} [${error.code}]`);
+      return;
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      res.status(500).send(`Unable to complete sign in [${code}]`);
+      return;
+    }
+
     res.status(500).send("Unable to complete sign in");
   }
 }
