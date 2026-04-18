@@ -576,8 +576,6 @@ function App() {
               Built to keep each organization isolated in its own DNS environment.
             </p>
           </>
-        ) : state.activeOrganization ? (
-          <h1>Organization workspace</h1>
         ) : (
           <h1>Finish setting up your organization</h1>
         )}
@@ -591,8 +589,8 @@ function App() {
           <p className="panel__label">Sign in</p>
           <h2>Passwordless email login</h2>
           <p className="intro">
-            Ange din email for att fa en sign-in länk. Om du har en invitation kommer den att kunna
-            accepteras efter inloggning.
+            Enter your email to receive a sign-in link. If you already have an invitation, you can
+            accept it after signing in.
           </p>
           <form className="form" onSubmit={(event) => void handleLoginSubmit(event)}>
             <label>
