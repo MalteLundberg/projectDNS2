@@ -580,7 +580,7 @@ function App() {
       </div>
 
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
-      {state.loading ? <p className="banner">Laddar dashboard...</p> : null}
+      {state.loading ? <p className="banner">Loading dashboard...</p> : null}
 
       {!state.loading && !state.currentUser ? (
         <section className="panel panel--highlight">
@@ -623,7 +623,8 @@ function App() {
           <p className="panel__label">Onboarding</p>
           <h2>Create your first organization</h2>
           <p className="intro">
-            Ditt konto ar inloggat men saknar organization. Skapa en for att komma in i dashboarden.
+            Your account is signed in but does not belong to an organization yet. Create one to
+            continue to the dashboard.
           </p>
           <form className="form" onSubmit={(event) => void handleCreateOrganization(event)}>
             <label>
@@ -690,7 +691,7 @@ function App() {
                 <p className="panel__label">Organization</p>
                 <h2>Access and membership</h2>
                 <p className="section-subtitle">
-                  Hantera organization context, members och invitations för vald tenant.
+                  Manage organization context, members and invitations for the selected tenant.
                 </p>
               </div>
             </div>
@@ -817,7 +818,8 @@ function App() {
                 <p className="panel__label">DNS</p>
                 <h2>Zones and records</h2>
                 <p className="section-subtitle">
-                  Skapa zoner, välj aktiv zon och hantera records för den valda organizationen.
+                  Create zones, select an active zone and manage records for the current
+                  organization.
                 </p>
               </div>
             </div>
@@ -865,7 +867,7 @@ function App() {
                     ? "Records are loaded directly from PowerDNS for the selected zone."
                     : "Choose a zone to inspect and manage its records."}
                 </p>
-                {recordsLoading ? <p>Laddar records...</p> : null}
+                {recordsLoading ? <p>Loading records...</p> : null}
                 {!recordsLoading && selectedZoneId ? (
                   <ul className="list">
                     {records.flatMap((rrset) =>
@@ -913,7 +915,7 @@ function App() {
                 <p className="panel__label">Actions</p>
                 <h2>Create and manage</h2>
                 <p className="section-subtitle">
-                  Här ligger alla skapande flöden. De är skrivbara bara för admins i vald
+                  All creation flows live here. They are only writable for admins in the selected
                   organization.
                 </p>
               </div>
