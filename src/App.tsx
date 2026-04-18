@@ -576,9 +576,7 @@ function App() {
               Built to keep each organization isolated in its own DNS environment.
             </p>
           </>
-        ) : (
-          <h1>Finish setting up your organization</h1>
-        )}
+        ) : null}
       </div>
 
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
