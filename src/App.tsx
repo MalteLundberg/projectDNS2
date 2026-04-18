@@ -725,13 +725,14 @@ function App() {
                 <ul className="list">
                   {state.members.map((member) => (
                     <li key={member.id} className="list__item">
-                      <div>
+                      <div className="member-summary">
                         <strong>{member.userName}</strong>
                         <p>{member.userEmail}</p>
                       </div>
-                      <div className="actions-row">
+                      <div className="actions-row actions-row--member">
                         {isOrgAdmin ? (
                           <select
+                            className="role-select"
                             value={member.role}
                             onChange={(event) =>
                               void handleMemberRoleChange(
