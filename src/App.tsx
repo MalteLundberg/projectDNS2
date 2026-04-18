@@ -568,11 +568,19 @@ function App() {
     <main className="app-shell">
       <div className="hero">
         <p className="eyebrow">Multi-tenant DNS manager</p>
-        <h1>Manage organizations, access and DNS from one place</h1>
-        <p className="intro">
-          Ett samlat gränssnitt för organization context, invitations, members, DNS zones och
-          records. Byggt för att ge varje organization sin egen isolerade DNS-yta.
-        </p>
+        {!state.currentUser ? (
+          <>
+            <h1>Manage organizations, access and DNS from one place</h1>
+            <p className="intro">
+              A unified workspace for organizations, invitations, members, DNS zones and records.
+              Built to keep each organization isolated in its own DNS environment.
+            </p>
+          </>
+        ) : state.activeOrganization ? (
+          <h1>Organization workspace</h1>
+        ) : (
+          <h1>Finish setting up your organization</h1>
+        )}
       </div>
 
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
