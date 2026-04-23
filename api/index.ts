@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import authLoginHandler from "../server/routes/auth/login.js";
 import authLogoutHandler from "../server/routes/auth/logout.js";
+import authPasswordLoginHandler from "../server/routes/auth/password-login.js";
 import authVerifyHandler from "../server/routes/auth/verify.js";
 import dbCheckHandler from "../server/routes/db-check.js";
 import healthHandler from "../server/routes/health.js";
@@ -46,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     "/api/invitations": invitationsHandler,
     "/api/zones": zonesHandler,
     "/api/auth/login": authLoginHandler,
+    "/api/auth/password-login": authPasswordLoginHandler,
     "/api/auth/logout": authLogoutHandler,
     "/api/auth/verify": authVerifyHandler,
     "/api/onboarding": onboardingHandler,

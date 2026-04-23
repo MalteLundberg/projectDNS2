@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { AuthFlowError, consumeLoginToken, createLoginSuccessCookies } from "../../../lib/auth.js";
-import { getPool } from "../../../lib/database.js";
+import {
+  AuthFlowError,
+  consumeLoginToken,
+  createLoginSuccessCookies,
+  getDefaultActiveOrganizationId,
+} from "../../../lib/auth.js";
 
 export const config = {
   runtime: "nodejs",
@@ -43,16 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let activeOrganizationId: string | null = loginResult.inviteOrganizationId ?? null;
 
     if (!activeOrganizationId) {
-      const membershipResult = await getPool().query(
-        `select organization_id as "organizationId"
-         from organization_members
-         where user_id = $1
-         order by created_at asc
-         limit 1`,
-        [loginResult.user.id],
-      );
-
-      activeOrganizationId = membershipResult.rows[0]?.organizationId ?? null;
+      activeOrganizationId = await getDefaultActiveOrganizationId(loginResult.user.id);
     }
 
     res.setHeader(

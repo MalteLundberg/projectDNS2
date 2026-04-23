@@ -60,6 +60,32 @@ Det här steget har ocksa lagt till verkligt app-side db-context per request via
 DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-HOST/DBNAME?sslmode=require
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
 RESEND_FROM_EMAIL=ProjectDNS <onboarding@example.com>
+SUPERVISOR_LOGIN_USERNAME=supervisor
+SUPERVISOR_LOGIN_PASSWORD_HASH=scrypt:replace-with-random-salt:replace-with-derived-key-hex
+SUPERVISOR_LOGIN_EMAIL=supervisor@example.com
+SUPERVISOR_LOGIN_NAME=Supervisor
+```
+
+## Supervisor sign-in
+
+The main sign-in flow is still passwordless email login.
+
+There is also a smaller secondary supervisor sign-in that does not send email and uses:
+
+- `SUPERVISOR_LOGIN_USERNAME`
+- `SUPERVISOR_LOGIN_PASSWORD_HASH`
+- `SUPERVISOR_LOGIN_EMAIL`
+- `SUPERVISOR_LOGIN_NAME`
+
+`SUPERVISOR_LOGIN_PASSWORD_HASH` must use the format `scrypt:salt:hash`, where:
+
+- `salt` is a random string
+- `hash` is the derived key encoded as hex
+
+You can generate one with Node.js:
+
+```bash
+node -e "const { randomBytes, scryptSync } = require('node:crypto'); const password = process.argv[1]; const salt = randomBytes(16).toString('hex'); const hash = scryptSync(password, salt, 64).toString('hex'); console.log(`scrypt:${salt}:${hash}`);" "your-password"
 ```
 
 ## Resend setup

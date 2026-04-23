@@ -7,6 +7,7 @@ import healthHandler from "./routes/health.js";
 import dbCheckHandler from "./routes/db-check.js";
 import authLoginHandler from "./routes/auth/login.js";
 import authLogoutHandler from "./routes/auth/logout.js";
+import authPasswordLoginHandler from "./routes/auth/password-login.js";
 import authVerifyHandler from "./routes/auth/verify.js";
 import invitationsHandler from "./routes/invitations/index.js";
 import acceptInvitationHandler from "./routes/invitations/[id]/accept.js";
@@ -167,6 +168,22 @@ const server = http.createServer(async (req, res) => {
       headers,
       body: method === "POST" ? await parseBody(req) : undefined,
     });
+    sendJson(res, response.statusCode, response.payload);
+    return;
+  }
+
+  if (pathname === "/api/auth/password-login") {
+    const response = await runHandler(authPasswordLoginHandler as unknown as LocalHandler, {
+      method,
+      query,
+      headers,
+      body: method === "POST" ? await parseBody(req) : undefined,
+    });
+    if (response.headers) {
+      for (const [name, value] of Object.entries(response.headers)) {
+        res.setHeader(name, value);
+      }
+    }
     sendJson(res, response.statusCode, response.payload);
     return;
   }

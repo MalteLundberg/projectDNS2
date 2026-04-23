@@ -137,6 +137,9 @@ function App() {
   const [loginName, setLoginName] = useState("Test User");
   const [sendingLoginLink, setSendingLoginLink] = useState(false);
   const [loginMessage, setLoginMessage] = useState<string | null>(null);
+  const [supervisorUsername, setSupervisorUsername] = useState("");
+  const [supervisorPassword, setSupervisorPassword] = useState("");
+  const [signingInSupervisor, setSigningInSupervisor] = useState(false);
   const [organizationName, setOrganizationName] = useState("My Organization");
   const [creatingOrganization, setCreatingOrganization] = useState(false);
 
@@ -329,6 +332,32 @@ function App() {
         ...current,
         error: error instanceof Error ? error.message : "Unknown logout error",
       }));
+    }
+  }
+
+  async function handleSupervisorLoginSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSigningInSupervisor(true);
+    setLoginMessage(null);
+
+    try {
+      await requestJson<{ ok: boolean; currentUser: CurrentUser }>("/api/auth/password-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          username: supervisorUsername,
+          password: supervisorPassword,
+        }),
+      });
+      setSupervisorPassword("");
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "Unknown supervisor login error",
+      }));
+    } finally {
+      setSigningInSupervisor(false);
     }
   }
 
@@ -583,39 +612,82 @@ function App() {
       {state.loading ? <p className="banner">Loading dashboard...</p> : null}
 
       {!state.loading && !state.currentUser ? (
-        <section className="panel panel--highlight">
-          <p className="panel__label">Sign in</p>
-          <h2>Passwordless email login</h2>
-          <p className="intro">
-            Enter your email to receive a sign-in link. If you already have an invitation, you can
-            accept it after signing in.
-          </p>
-          <form className="form" onSubmit={(event) => void handleLoginSubmit(event)}>
-            <label>
-              Name
-              <input
-                value={loginName}
-                onChange={(event) => setLoginName(event.target.value)}
-                type="text"
-              />
-            </label>
+        <>
+          <section className="panel panel--highlight">
+            <p className="panel__label">Sign in</p>
+            <h2>Passwordless email login</h2>
+            <p className="intro">
+              Enter your email to receive a sign-in link. If you already have an invitation, you can
+              accept it after signing in.
+            </p>
+            <form className="form" onSubmit={(event) => void handleLoginSubmit(event)}>
+              <label>
+                Name
+                <input
+                  value={loginName}
+                  onChange={(event) => setLoginName(event.target.value)}
+                  type="text"
+                />
+              </label>
 
-            <label>
-              Email
-              <input
-                value={loginEmail}
-                onChange={(event) => setLoginEmail(event.target.value)}
-                type="email"
-                required
-              />
-            </label>
+              <label>
+                Email
+                <input
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                  type="email"
+                  required
+                />
+              </label>
 
-            <button type="submit" disabled={sendingLoginLink}>
-              {sendingLoginLink ? "Sending..." : "Send sign-in link"}
-            </button>
-          </form>
-          {loginMessage ? <p className="banner">{loginMessage}</p> : null}
-        </section>
+              <button type="submit" disabled={sendingLoginLink}>
+                {sendingLoginLink ? "Sending..." : "Send sign-in link"}
+              </button>
+            </form>
+            {loginMessage ? <p className="banner">{loginMessage}</p> : null}
+          </section>
+
+          <section className="panel panel--subtle auth-panel-secondary">
+            <div className="auth-panel-secondary__header">
+              <div>
+                <p className="panel__label">Supervisor</p>
+                <h3>Supervisor sign in</h3>
+              </div>
+              <p className="auth-panel-secondary__copy">Use username and password.</p>
+            </div>
+
+            <form
+              className="form form--compact"
+              onSubmit={(event) => void handleSupervisorLoginSubmit(event)}
+            >
+              <label>
+                Username
+                <input
+                  value={supervisorUsername}
+                  onChange={(event) => setSupervisorUsername(event.target.value)}
+                  type="text"
+                  autoComplete="username"
+                  required
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  value={supervisorPassword}
+                  onChange={(event) => setSupervisorPassword(event.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+
+              <button type="submit" disabled={signingInSupervisor}>
+                {signingInSupervisor ? "Signing in..." : "Sign in"}
+              </button>
+            </form>
+          </section>
+        </>
       ) : null}
 
       {!state.loading && state.currentUser && !state.activeOrganization ? (

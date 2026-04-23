@@ -170,6 +170,11 @@ h1 {
   background: linear-gradient(180deg, rgba(40, 76, 141, 0.45), rgba(9, 17, 31, 0.72));
 }
 
+.panel--subtle {
+  background: rgba(9, 17, 31, 0.56);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
 .context-strip {
   display: flex;
   align-items: flex-start;
@@ -326,6 +331,11 @@ h1 {
   margin-top: 1rem;
 }
 
+.form--compact {
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
 .form label {
   display: grid;
   gap: 0.45rem;
@@ -360,6 +370,29 @@ h1 {
 .form button:disabled {
   opacity: 0.65;
   cursor: wait;
+}
+
+.auth-panel-secondary {
+  margin-top: 1rem;
+  max-width: 28rem;
+}
+
+.auth-panel-secondary__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.auth-panel-secondary h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.auth-panel-secondary__copy {
+  margin: 0;
+  color: #9fb7d6;
+  font-size: 0.92rem;
 }
 
 .actions-row {
