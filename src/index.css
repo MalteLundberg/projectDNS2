@@ -175,7 +175,7 @@ h1 {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 
-.context-strip {
+.top-bar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -183,17 +183,34 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
-.context-strip__main {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem;
-  flex: 1;
+.top-bar__identity {
+  min-width: 0;
 }
 
-.context-strip__actions {
+.top-bar__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  color: #b8c7dc;
+}
+
+.top-bar__controls {
   width: min(280px, 100%);
-  display: grid;
-  gap: 0.9rem;
+}
+
+.top-bar__controls .inline-field {
+  margin-top: 0;
+}
+
+.top-bar__signout {
+  border: 0;
+  background: transparent;
+  color: #dce9ff;
+  padding: 0;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .panel__label {
@@ -503,6 +520,10 @@ h1 {
   transform: rotate(-90deg);
 }
 
+.section-toggle--footer {
+  margin-top: 1rem;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     width: min(1180px, calc(100% - 1.5rem));
@@ -532,6 +553,15 @@ h1 {
     flex-wrap: wrap;
   }
 
+  .top-bar {
+    flex-direction: column;
+  }
+
+  .top-bar__controls {
+    width: 100%;
+    max-width: 22rem;
+  }
+
   .section-heading__actions {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -553,14 +583,22 @@ h1 {
     max-width: none;
   }
 
-  .context-strip,
-  .context-strip__main {
-    display: grid;
-    grid-template-columns: 1fr;
+  .top-bar {
+    gap: 1rem;
   }
 
-  .context-strip__actions {
+  .top-bar__meta {
+    gap: 0.45rem 0.75rem;
+  }
+
+  .top-bar__meta span:first-child::after {
+    content: "•";
+    margin-left: 0.75rem;
+  }
+
+  .top-bar__controls {
     width: 100%;
+    max-width: none;
   }
 
   .section-heading {
@@ -622,12 +660,12 @@ h1 {
   }
 
   .actions-row--member,
-  .context-strip__actions {
+  .top-bar__controls {
     width: 100%;
   }
 
   .actions-row--member > *,
-  .context-strip__actions > *,
+  .top-bar__controls > *,
   .list__item > .secondary-button {
     width: 100%;
   }

@@ -641,6 +641,12 @@ function App() {
   const showZoneActionPanel = !isMobileLayout || mobileActionPanels.zone;
   const showRecordActionPanel = !isMobileLayout || mobileActionPanels.record;
   const showInviteActionPanel = !isMobileLayout || mobileActionPanels.invite;
+  const showOrganizationHeaderToggle = isMobileLayout && !showOrganizationSection;
+  const showDnsHeaderToggle = isMobileLayout && !showDnsSection;
+  const showActionsHeaderToggle = isMobileLayout && !showActionsSection;
+  const showZonePanelHeaderToggle = isMobileLayout && !showZoneActionPanel;
+  const showRecordPanelHeaderToggle = isMobileLayout && !showRecordActionPanel;
+  const showInvitePanelHeaderToggle = isMobileLayout && !showInviteActionPanel;
 
   return (
     <main className="app-shell">
@@ -767,22 +773,25 @@ function App() {
 
       {state.currentUser && state.activeOrganization ? (
         <>
-          <section className="context-strip panel panel--highlight">
-            <div className="context-strip__main">
-              <div>
-                <p className="panel__label">Signed in as</p>
-                <h2>{state.currentUser.name}</h2>
-                <p>{state.currentUser.email}</p>
-              </div>
+          <section className="top-bar panel panel--highlight">
+            <div className="top-bar__identity">
               <div>
                 <p className="panel__label">Active organization</p>
                 <h2>{state.activeOrganization.name}</h2>
-                <p>
-                  Role: <strong>{state.activeOrganization.role}</strong>
-                </p>
+              </div>
+              <div className="top-bar__meta">
+                <span>{state.activeOrganization.role}</span>
+                <span>{state.currentUser.name}</span>
+                <button
+                  type="button"
+                  className="top-bar__signout"
+                  onClick={() => void handleLogout()}
+                >
+                  Sign out
+                </button>
               </div>
             </div>
-            <div className="context-strip__actions">
+            <div className="top-bar__controls">
               <label className="inline-field">
                 <span>Choose organization</span>
                 <select
@@ -796,13 +805,6 @@ function App() {
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleLogout()}
-              >
-                Sign out
-              </button>
             </div>
           </section>
 
@@ -813,133 +815,147 @@ function App() {
                 <h2>Access and membership</h2>
               </div>
               <div className="section-heading__actions">
-                <button
-                  type="button"
-                  className="section-toggle"
-                  aria-expanded={showOrganizationSection}
-                  onClick={() => toggleMobileSection("organization")}
-                >
-                  {showOrganizationSection ? "Close" : "Open"}
-                </button>
+                {showOrganizationHeaderToggle ? (
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    aria-expanded={showOrganizationSection}
+                    onClick={() => toggleMobileSection("organization")}
+                  >
+                    Open
+                  </button>
+                ) : null}
               </div>
             </div>
 
             {showOrganizationSection ? (
-              <div className="dashboard-grid dashboard-grid--organization">
-                <section className="panel">
-                  <p className="panel__label">Organizations in context</p>
-                  <h2>{state.organizations.length}</h2>
-                  <ul className="list">
-                    {state.organizations.map((organization) => (
-                      <li key={organization.id} className="list__item">
-                        <div>
-                          <strong>{organization.name}</strong>
-                          <p>{organization.slug}</p>
-                        </div>
-                        <span className="pill">
-                          {organization.id === state.activeOrganization?.id ? "active" : "available"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+              <>
+                <div className="dashboard-grid dashboard-grid--organization">
+                  <section className="panel">
+                    <p className="panel__label">Organizations in context</p>
+                    <h2>{state.organizations.length}</h2>
+                    <ul className="list">
+                      {state.organizations.map((organization) => (
+                        <li key={organization.id} className="list__item">
+                          <div>
+                            <strong>{organization.name}</strong>
+                            <p>{organization.slug}</p>
+                          </div>
+                          <span className="pill">
+                            {organization.id === state.activeOrganization?.id ? "active" : "available"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
 
-                <section className="panel">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">Members</p>
-                      <h2>{state.members.length}</h2>
+                  <section className="panel">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">Members</p>
+                        <h2>{state.members.length}</h2>
+                      </div>
                     </div>
-                  </div>
-                  <ul className="list">
-                    {state.members.map((member) => (
-                      <li key={member.id} className="list__item">
-                        <div className="member-summary">
-                          <strong>{member.userName}</strong>
-                          <p>{member.userEmail}</p>
-                        </div>
-                        <div className="actions-row actions-row--member">
-                          {isOrgAdmin ? (
-                            <select
-                              className="role-select"
-                              value={member.role}
-                              onChange={(event) =>
-                                void handleMemberRoleChange(
-                                  member.id,
-                                  event.target.value as "admin" | "user",
-                                )
-                              }
-                              disabled={updatingMemberId === member.id}
-                            >
-                              <option value="user">user</option>
-                              <option value="admin">admin</option>
-                            </select>
-                          ) : (
-                            <span className="pill">{member.role}</span>
-                          )}
-                          {isOrgAdmin && member.userId !== state.currentUser?.id ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void handleRemoveMember(member.id)}
-                              disabled={removingMemberId === member.id}
-                            >
-                              {removingMemberId === member.id ? "Removing..." : "Remove"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+                    <ul className="list">
+                      {state.members.map((member) => (
+                        <li key={member.id} className="list__item">
+                          <div className="member-summary">
+                            <strong>{member.userName}</strong>
+                            <p>{member.userEmail}</p>
+                          </div>
+                          <div className="actions-row actions-row--member">
+                            {isOrgAdmin ? (
+                              <select
+                                className="role-select"
+                                value={member.role}
+                                onChange={(event) =>
+                                  void handleMemberRoleChange(
+                                    member.id,
+                                    event.target.value as "admin" | "user",
+                                  )
+                                }
+                                disabled={updatingMemberId === member.id}
+                              >
+                                <option value="user">user</option>
+                                <option value="admin">admin</option>
+                              </select>
+                            ) : (
+                              <span className="pill">{member.role}</span>
+                            )}
+                            {isOrgAdmin && member.userId !== state.currentUser?.id ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleRemoveMember(member.id)}
+                                disabled={removingMemberId === member.id}
+                              >
+                                {removingMemberId === member.id ? "Removing..." : "Remove"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
 
-                <section className="panel">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">Invitations</p>
-                      <h2>{state.invitations.length}</h2>
+                  <section className="panel">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">Invitations</p>
+                        <h2>{state.invitations.length}</h2>
+                      </div>
+                      <span className="section-tag">Admin workspace</span>
                     </div>
-                    <span className="section-tag">Admin workspace</span>
-                  </div>
-                  <ul className="list">
-                    {state.invitations.length === 0 ? (
-                      <li className="empty-state">No invitations yet.</li>
-                    ) : null}
-                    {state.invitations.map((invitation) => (
-                      <li key={invitation.id} className="list__item">
-                        <div>
-                          <strong>{invitation.email}</strong>
-                          <p>{invitation.status}</p>
-                        </div>
-                        <div className="actions-row">
-                          <span className="pill">{invitation.role}</span>
-                          {invitation.status === "pending" &&
-                          isInvitationForCurrentUser(invitation, state.currentUser) ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void handleAcceptInvitation(invitation.id)}
-                              disabled={acceptingInvitationId === invitation.id}
-                            >
-                              {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
-                            </button>
-                          ) : null}
-                          {invitation.status === "pending" && isOrgAdmin ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void handleRevokeInvitation(invitation.id)}
-                              disabled={revokingInvitationId === invitation.id}
-                            >
-                              {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              </div>
+                    <ul className="list">
+                      {state.invitations.length === 0 ? (
+                        <li className="empty-state">No invitations yet.</li>
+                      ) : null}
+                      {state.invitations.map((invitation) => (
+                        <li key={invitation.id} className="list__item">
+                          <div>
+                            <strong>{invitation.email}</strong>
+                            <p>{invitation.status}</p>
+                          </div>
+                          <div className="actions-row">
+                            <span className="pill">{invitation.role}</span>
+                            {invitation.status === "pending" &&
+                            isInvitationForCurrentUser(invitation, state.currentUser) ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleAcceptInvitation(invitation.id)}
+                                disabled={acceptingInvitationId === invitation.id}
+                              >
+                                {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
+                              </button>
+                            ) : null}
+                            {invitation.status === "pending" && isOrgAdmin ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleRevokeInvitation(invitation.id)}
+                                disabled={revokingInvitationId === invitation.id}
+                              >
+                                {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                </div>
+                {isMobileLayout ? (
+                  <button
+                    type="button"
+                    className="section-toggle section-toggle--footer"
+                    aria-expanded={showOrganizationSection}
+                    onClick={() => toggleMobileSection("organization")}
+                  >
+                    Close
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
 
@@ -950,101 +966,115 @@ function App() {
                 <h2>Zones and records</h2>
               </div>
               <div className="section-heading__actions">
-                <button
-                  type="button"
-                  className="section-toggle"
-                  aria-expanded={showDnsSection}
-                  onClick={() => toggleMobileSection("dns")}
-                >
-                  {showDnsSection ? "Close" : "Open"}
-                </button>
+                {showDnsHeaderToggle ? (
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    aria-expanded={showDnsSection}
+                    onClick={() => toggleMobileSection("dns")}
+                  >
+                    Open
+                  </button>
+                ) : null}
               </div>
             </div>
 
             {showDnsSection ? (
-              <div className="dashboard-grid dashboard-grid--dns">
-                <section className="panel dns-panel dns-panel--zones">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">DNS zones</p>
-                      <h2>{state.zones.length}</h2>
+              <>
+                <div className="dashboard-grid dashboard-grid--dns">
+                  <section className="panel dns-panel dns-panel--zones">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">DNS zones</p>
+                        <h2>{state.zones.length}</h2>
+                      </div>
+                      <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
                     </div>
-                    <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
-                  </div>
-                  <ul className="list">
-                    {state.zones.length === 0 ? (
-                      <li className="empty-state">No zones created yet.</li>
-                    ) : null}
-                    {state.zones.map((zone) => (
-                      <li
-                        key={zone.id}
-                        className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
-                      >
-                        <div>
-                          <strong>{zone.name}</strong>
-                          <p>{zone.provider}</p>
-                          <code>{zone.powerdnsZoneId}</code>
-                        </div>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => setSelectedZoneId(zone.id)}
-                        >
-                          {selectedZoneId === zone.id ? "Selected" : "Open records"}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section className="panel dns-panel dns-panel--records">
-                  <p className="panel__label">Zone records</p>
-                  <h2>{selectedZone?.name ?? "Select a zone"}</h2>
-                  <p className="section-subtitle">
-                    {selectedZone
-                      ? "Records are loaded directly from PowerDNS for the selected zone."
-                      : "Choose a zone to inspect and manage its records."}
-                  </p>
-                  {recordsLoading ? <p>Loading records...</p> : null}
-                  {!recordsLoading && selectedZoneId ? (
                     <ul className="list">
-                      {records.flatMap((rrset) =>
-                        rrset.records.map((record) => {
-                          const key = `${rrset.name}:${rrset.type}:${record.content}`;
-
-                          return (
-                            <li key={key} className="list__item">
-                              <div>
-                                <strong>
-                                  {rrset.name} {rrset.type}
-                                </strong>
-                                <p>
-                                  TTL {rrset.ttl} • {record.content}
-                                </p>
-                              </div>
-                              {isOrgAdmin ? (
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick={() =>
-                                    void handleDeleteRecord(rrset.name, rrset.type, record.content)
-                                  }
-                                  disabled={deletingRecordKey === key}
-                                >
-                                  {deletingRecordKey === key ? "Deleting..." : "Delete"}
-                                </button>
-                              ) : null}
-                            </li>
-                          );
-                        }),
-                      )}
+                      {state.zones.length === 0 ? (
+                        <li className="empty-state">No zones created yet.</li>
+                      ) : null}
+                      {state.zones.map((zone) => (
+                        <li
+                          key={zone.id}
+                          className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
+                        >
+                          <div>
+                            <strong>{zone.name}</strong>
+                            <p>{zone.provider}</p>
+                            <code>{zone.powerdnsZoneId}</code>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setSelectedZoneId(zone.id)}
+                          >
+                            {selectedZoneId === zone.id ? "Selected" : "Open records"}
+                          </button>
+                        </li>
+                      ))}
                     </ul>
-                  ) : null}
-                  {!recordsLoading && selectedZoneId && records.length === 0 ? (
-                    <p className="empty-state">No records found for the selected zone.</p>
-                  ) : null}
-                </section>
-              </div>
+                  </section>
+
+                  <section className="panel dns-panel dns-panel--records">
+                    <p className="panel__label">Zone records</p>
+                    <h2>{selectedZone?.name ?? "Select a zone"}</h2>
+                    <p className="section-subtitle">
+                      {selectedZone
+                        ? "Records are loaded directly from PowerDNS for the selected zone."
+                        : "Choose a zone to inspect and manage its records."}
+                    </p>
+                    {recordsLoading ? <p>Loading records...</p> : null}
+                    {!recordsLoading && selectedZoneId ? (
+                      <ul className="list">
+                        {records.flatMap((rrset) =>
+                          rrset.records.map((record) => {
+                            const key = `${rrset.name}:${rrset.type}:${record.content}`;
+
+                            return (
+                              <li key={key} className="list__item">
+                                <div>
+                                  <strong>
+                                    {rrset.name} {rrset.type}
+                                  </strong>
+                                  <p>
+                                    TTL {rrset.ttl} • {record.content}
+                                  </p>
+                                </div>
+                                {isOrgAdmin ? (
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      void handleDeleteRecord(rrset.name, rrset.type, record.content)
+                                    }
+                                    disabled={deletingRecordKey === key}
+                                  >
+                                    {deletingRecordKey === key ? "Deleting..." : "Delete"}
+                                  </button>
+                                ) : null}
+                              </li>
+                            );
+                          }),
+                        )}
+                      </ul>
+                    ) : null}
+                    {!recordsLoading && selectedZoneId && records.length === 0 ? (
+                      <p className="empty-state">No records found for the selected zone.</p>
+                    ) : null}
+                  </section>
+                </div>
+                {isMobileLayout ? (
+                  <button
+                    type="button"
+                    className="section-toggle section-toggle--footer"
+                    aria-expanded={showDnsSection}
+                    onClick={() => toggleMobileSection("dns")}
+                  >
+                    Close
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
 
@@ -1055,187 +1085,243 @@ function App() {
                 <h2>Create and manage</h2>
               </div>
               <div className="section-heading__actions">
-                <button
-                  type="button"
-                  className="section-toggle"
-                  aria-expanded={showActionsSection}
-                  onClick={() => toggleMobileSection("actions")}
-                >
-                  {showActionsSection ? "Close" : "Open"}
-                </button>
+                {showActionsHeaderToggle ? (
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    aria-expanded={showActionsSection}
+                    onClick={() => toggleMobileSection("actions")}
+                  >
+                    Open
+                  </button>
+                ) : null}
               </div>
             </div>
 
             {showActionsSection ? (
-              <div className="dashboard-grid dashboard-grid--actions">
-                <section className="panel action-panel">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">Create DNS zone</p>
-                      <h2>New zone</h2>
-                    </div>
-                    <button
-                      type="button"
-                      className="section-toggle"
-                      aria-expanded={showZoneActionPanel}
-                      onClick={() => toggleMobileActionPanel("zone")}
-                    >
-                      {showZoneActionPanel ? "Close" : "Open"}
-                    </button>
-                  </div>
-                  {showZoneActionPanel ? (
-                    <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
-                      <label>
-                        Zone name
-                        <input
-                          value={zoneName}
-                          onChange={(event) => setZoneName(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <button type="submit" disabled={creatingZone || !isOrgAdmin}>
-                        {creatingZone ? "Creating..." : "Create zone"}
-                      </button>
-                    </form>
-                  ) : null}
-                </section>
-
-                <section className="panel action-panel">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">Create DNS record</p>
-                      <h2>New record</h2>
-                    </div>
-                    <button
-                      type="button"
-                      className="section-toggle"
-                      aria-expanded={showRecordActionPanel}
-                      onClick={() => toggleMobileActionPanel("record")}
-                    >
-                      {showRecordActionPanel ? "Close" : "Open"}
-                    </button>
-                  </div>
-                  {showRecordActionPanel ? (
-                    <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
-                      <label>
-                        Zone
-                        <select
-                          value={selectedZoneId}
-                          onChange={(event) => setSelectedZoneId(event.target.value)}
+              <>
+                <div className="dashboard-grid dashboard-grid--actions">
+                  <section className="panel action-panel">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">Create DNS zone</p>
+                        <h2>New zone</h2>
+                      </div>
+                      {showZonePanelHeaderToggle ? (
+                        <button
+                          type="button"
+                          className="section-toggle"
+                          aria-expanded={showZoneActionPanel}
+                          onClick={() => toggleMobileActionPanel("zone")}
                         >
-                          <option value="">Select zone</option>
-                          {state.zones.map((zone) => (
-                            <option key={zone.id} value={zone.id}>
-                              {zone.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Name
-                        <input
-                          value={recordName}
-                          onChange={(event) => setRecordName(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <label>
-                        Type
-                        <select
-                          value={recordType}
-                          onChange={(event) => setRecordType(event.target.value)}
-                        >
-                          <option value="A">A</option>
-                          <option value="AAAA">AAAA</option>
-                          <option value="CNAME">CNAME</option>
-                          <option value="TXT">TXT</option>
-                          <option value="MX">MX</option>
-                        </select>
-                      </label>
-
-                      <label>
-                        Content
-                        <input
-                          value={recordContent}
-                          onChange={(event) => setRecordContent(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <label>
-                        TTL
-                        <input
-                          value={recordTtl}
-                          onChange={(event) => setRecordTtl(event.target.value)}
-                          type="number"
-                          min="1"
-                          required
-                        />
-                      </label>
-
-                      <button
-                        type="submit"
-                        disabled={savingRecord || !isOrgAdmin || !selectedZoneId}
-                      >
-                        {savingRecord ? "Saving..." : "Create record"}
-                      </button>
-                    </form>
-                  ) : null}
-                </section>
-
-                <section className="panel action-panel">
-                  <div className="panel__header">
-                    <div>
-                      <p className="panel__label">Create invitation</p>
-                      <h2>Invite member</h2>
+                          Open
+                        </button>
+                      ) : null}
                     </div>
-                    <button
-                      type="button"
-                      className="section-toggle"
-                      aria-expanded={showInviteActionPanel}
-                      onClick={() => toggleMobileActionPanel("invite")}
-                    >
-                      {showInviteActionPanel ? "Close" : "Open"}
-                    </button>
-                  </div>
-                  {showInviteActionPanel ? (
-                    <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
-                      <label>
-                        Email
-                        <input
-                          value={inviteEmail}
-                          onChange={(event) => setInviteEmail(event.target.value)}
-                          type="email"
-                          required
-                        />
-                      </label>
+                    {showZoneActionPanel ? (
+                      <>
+                        <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
+                          <label>
+                            Zone name
+                            <input
+                              value={zoneName}
+                              onChange={(event) => setZoneName(event.target.value)}
+                              type="text"
+                              required
+                            />
+                          </label>
 
-                      <label>
-                        Role
-                        <select
-                          value={inviteRole}
-                          onChange={(event) =>
-                            setInviteRole(event.target.value as "admin" | "user")
-                          }
+                          <button type="submit" disabled={creatingZone || !isOrgAdmin}>
+                            {creatingZone ? "Creating..." : "Create zone"}
+                          </button>
+                        </form>
+                        {isMobileLayout ? (
+                          <button
+                            type="button"
+                            className="section-toggle section-toggle--footer"
+                            aria-expanded={showZoneActionPanel}
+                            onClick={() => toggleMobileActionPanel("zone")}
+                          >
+                            Close
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </section>
+
+                  <section className="panel action-panel">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">Create DNS record</p>
+                        <h2>New record</h2>
+                      </div>
+                      {showRecordPanelHeaderToggle ? (
+                        <button
+                          type="button"
+                          className="section-toggle"
+                          aria-expanded={showRecordActionPanel}
+                          onClick={() => toggleMobileActionPanel("record")}
                         >
-                          <option value="user">user</option>
-                          <option value="admin">admin</option>
-                        </select>
-                      </label>
+                          Open
+                        </button>
+                      ) : null}
+                    </div>
+                    {showRecordActionPanel ? (
+                      <>
+                        <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
+                          <label>
+                            Zone
+                            <select
+                              value={selectedZoneId}
+                              onChange={(event) => setSelectedZoneId(event.target.value)}
+                            >
+                              <option value="">Select zone</option>
+                              {state.zones.map((zone) => (
+                                <option key={zone.id} value={zone.id}>
+                                  {zone.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
 
-                      <button type="submit" disabled={submitting || !isOrgAdmin}>
-                        {submitting ? "Saving..." : "Create invitation"}
-                      </button>
-                    </form>
-                  ) : null}
-                </section>
-              </div>
+                          <label>
+                            Name
+                            <input
+                              value={recordName}
+                              onChange={(event) => setRecordName(event.target.value)}
+                              type="text"
+                              required
+                            />
+                          </label>
+
+                          <label>
+                            Type
+                            <select
+                              value={recordType}
+                              onChange={(event) => setRecordType(event.target.value)}
+                            >
+                              <option value="A">A</option>
+                              <option value="AAAA">AAAA</option>
+                              <option value="CNAME">CNAME</option>
+                              <option value="TXT">TXT</option>
+                              <option value="MX">MX</option>
+                            </select>
+                          </label>
+
+                          <label>
+                            Content
+                            <input
+                              value={recordContent}
+                              onChange={(event) => setRecordContent(event.target.value)}
+                              type="text"
+                              required
+                            />
+                          </label>
+
+                          <label>
+                            TTL
+                            <input
+                              value={recordTtl}
+                              onChange={(event) => setRecordTtl(event.target.value)}
+                              type="number"
+                              min="1"
+                              required
+                            />
+                          </label>
+
+                          <button
+                            type="submit"
+                            disabled={savingRecord || !isOrgAdmin || !selectedZoneId}
+                          >
+                            {savingRecord ? "Saving..." : "Create record"}
+                          </button>
+                        </form>
+                        {isMobileLayout ? (
+                          <button
+                            type="button"
+                            className="section-toggle section-toggle--footer"
+                            aria-expanded={showRecordActionPanel}
+                            onClick={() => toggleMobileActionPanel("record")}
+                          >
+                            Close
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </section>
+
+                  <section className="panel action-panel">
+                    <div className="panel__header">
+                      <div>
+                        <p className="panel__label">Create invitation</p>
+                        <h2>Invite member</h2>
+                      </div>
+                      {showInvitePanelHeaderToggle ? (
+                        <button
+                          type="button"
+                          className="section-toggle"
+                          aria-expanded={showInviteActionPanel}
+                          onClick={() => toggleMobileActionPanel("invite")}
+                        >
+                          Open
+                        </button>
+                      ) : null}
+                    </div>
+                    {showInviteActionPanel ? (
+                      <>
+                        <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
+                          <label>
+                            Email
+                            <input
+                              value={inviteEmail}
+                              onChange={(event) => setInviteEmail(event.target.value)}
+                              type="email"
+                              required
+                            />
+                          </label>
+
+                          <label>
+                            Role
+                            <select
+                              value={inviteRole}
+                              onChange={(event) =>
+                                setInviteRole(event.target.value as "admin" | "user")
+                              }
+                            >
+                              <option value="user">user</option>
+                              <option value="admin">admin</option>
+                            </select>
+                          </label>
+
+                          <button type="submit" disabled={submitting || !isOrgAdmin}>
+                            {submitting ? "Saving..." : "Create invitation"}
+                          </button>
+                        </form>
+                        {isMobileLayout ? (
+                          <button
+                            type="button"
+                            className="section-toggle section-toggle--footer"
+                            aria-expanded={showInviteActionPanel}
+                            onClick={() => toggleMobileActionPanel("invite")}
+                          >
+                            Close
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </section>
+                </div>
+                {isMobileLayout ? (
+                  <button
+                    type="button"
+                    className="section-toggle section-toggle--footer"
+                    aria-expanded={showActionsSection}
+                    onClick={() => toggleMobileSection("actions")}
+                  >
+                    Close
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </>
