@@ -77,6 +77,9 @@ type DashboardState = {
   zones: Zone[];
 };
 
+type MobileSectionKey = "organization" | "dns" | "actions";
+type MobileActionPanelKey = "zone" | "record" | "invite";
+
 function isInvitationForCurrentUser(
   invitation: Invitation,
   currentUser: CurrentUser | null | undefined,
@@ -142,6 +145,17 @@ function App() {
   const [signingInSupervisor, setSigningInSupervisor] = useState(false);
   const [organizationName, setOrganizationName] = useState("My Organization");
   const [creatingOrganization, setCreatingOrganization] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileSections, setMobileSections] = useState<Record<MobileSectionKey, boolean>>({
+    organization: false,
+    dns: true,
+    actions: false,
+  });
+  const [mobileActionPanels, setMobileActionPanels] = useState<Record<MobileActionPanelKey, boolean>>({
+    zone: false,
+    record: true,
+    invite: false,
+  });
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -210,6 +224,21 @@ function App() {
 
   useEffect(() => {
     void loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 720px)");
+
+    function syncMobileLayout() {
+      setIsMobileLayout(mediaQuery.matches);
+    }
+
+    syncMobileLayout();
+    mediaQuery.addEventListener("change", syncMobileLayout);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncMobileLayout);
+    };
   }, []);
 
   useEffect(() => {
@@ -590,8 +619,28 @@ function App() {
     }
   }
 
+  function toggleMobileSection(section: MobileSectionKey) {
+    setMobileSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }
+
+  function toggleMobileActionPanel(panel: MobileActionPanelKey) {
+    setMobileActionPanels((current) => ({
+      ...current,
+      [panel]: !current[panel],
+    }));
+  }
+
   const isOrgAdmin = state.activeOrganization?.role === "admin";
   const selectedZone = state.zones.find((zone) => zone.id === selectedZoneId) ?? null;
+  const showOrganizationSection = !isMobileLayout || mobileSections.organization;
+  const showDnsSection = !isMobileLayout || mobileSections.dns;
+  const showActionsSection = !isMobileLayout || mobileSections.actions;
+  const showZoneActionPanel = !isMobileLayout || mobileActionPanels.zone;
+  const showRecordActionPanel = !isMobileLayout || mobileActionPanels.record;
+  const showInviteActionPanel = !isMobileLayout || mobileActionPanels.invite;
 
   return (
     <main className="app-shell">
@@ -766,123 +815,138 @@ function App() {
                   Manage organization context, members and invitations for the selected tenant.
                 </p>
               </div>
+              <div className="section-heading__actions">
+                <span className="section-tag">
+                  {state.members.length} members • {state.invitations.length} invites
+                </span>
+                <button
+                  type="button"
+                  className="section-toggle"
+                  aria-expanded={showOrganizationSection}
+                  onClick={() => toggleMobileSection("organization")}
+                >
+                  {showOrganizationSection ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
-            <div className="dashboard-grid dashboard-grid--organization">
-              <section className="panel">
-                <p className="panel__label">Organizations in context</p>
-                <h2>{state.organizations.length}</h2>
-                <ul className="list">
-                  {state.organizations.map((organization) => (
-                    <li key={organization.id} className="list__item">
-                      <div>
-                        <strong>{organization.name}</strong>
-                        <p>{organization.slug}</p>
-                      </div>
-                      <span className="pill">
-                        {organization.id === state.activeOrganization?.id ? "active" : "available"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+            {showOrganizationSection ? (
+              <div className="dashboard-grid dashboard-grid--organization">
+                <section className="panel">
+                  <p className="panel__label">Organizations in context</p>
+                  <h2>{state.organizations.length}</h2>
+                  <ul className="list">
+                    {state.organizations.map((organization) => (
+                      <li key={organization.id} className="list__item">
+                        <div>
+                          <strong>{organization.name}</strong>
+                          <p>{organization.slug}</p>
+                        </div>
+                        <span className="pill">
+                          {organization.id === state.activeOrganization?.id ? "active" : "available"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
 
-              <section className="panel">
-                <div className="panel__header">
-                  <div>
-                    <p className="panel__label">Members</p>
-                    <h2>{state.members.length}</h2>
+                <section className="panel">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">Members</p>
+                      <h2>{state.members.length}</h2>
+                    </div>
                   </div>
-                </div>
-                <ul className="list">
-                  {state.members.map((member) => (
-                    <li key={member.id} className="list__item">
-                      <div className="member-summary">
-                        <strong>{member.userName}</strong>
-                        <p>{member.userEmail}</p>
-                      </div>
-                      <div className="actions-row actions-row--member">
-                        {isOrgAdmin ? (
-                          <select
-                            className="role-select"
-                            value={member.role}
-                            onChange={(event) =>
-                              void handleMemberRoleChange(
-                                member.id,
-                                event.target.value as "admin" | "user",
-                              )
-                            }
-                            disabled={updatingMemberId === member.id}
-                          >
-                            <option value="user">user</option>
-                            <option value="admin">admin</option>
-                          </select>
-                        ) : (
-                          <span className="pill">{member.role}</span>
-                        )}
-                        {isOrgAdmin && member.userId !== state.currentUser?.id ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => void handleRemoveMember(member.id)}
-                            disabled={removingMemberId === member.id}
-                          >
-                            {removingMemberId === member.id ? "Removing..." : "Remove"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+                  <ul className="list">
+                    {state.members.map((member) => (
+                      <li key={member.id} className="list__item">
+                        <div className="member-summary">
+                          <strong>{member.userName}</strong>
+                          <p>{member.userEmail}</p>
+                        </div>
+                        <div className="actions-row actions-row--member">
+                          {isOrgAdmin ? (
+                            <select
+                              className="role-select"
+                              value={member.role}
+                              onChange={(event) =>
+                                void handleMemberRoleChange(
+                                  member.id,
+                                  event.target.value as "admin" | "user",
+                                )
+                              }
+                              disabled={updatingMemberId === member.id}
+                            >
+                              <option value="user">user</option>
+                              <option value="admin">admin</option>
+                            </select>
+                          ) : (
+                            <span className="pill">{member.role}</span>
+                          )}
+                          {isOrgAdmin && member.userId !== state.currentUser?.id ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleRemoveMember(member.id)}
+                              disabled={removingMemberId === member.id}
+                            >
+                              {removingMemberId === member.id ? "Removing..." : "Remove"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
 
-              <section className="panel">
-                <div className="panel__header">
-                  <div>
-                    <p className="panel__label">Invitations</p>
-                    <h2>{state.invitations.length}</h2>
+                <section className="panel">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">Invitations</p>
+                      <h2>{state.invitations.length}</h2>
+                    </div>
+                    <span className="section-tag">Admin workspace</span>
                   </div>
-                  <span className="section-tag">Admin workspace</span>
-                </div>
-                <ul className="list">
-                  {state.invitations.length === 0 ? (
-                    <li className="empty-state">No invitations yet.</li>
-                  ) : null}
-                  {state.invitations.map((invitation) => (
-                    <li key={invitation.id} className="list__item">
-                      <div>
-                        <strong>{invitation.email}</strong>
-                        <p>{invitation.status}</p>
-                      </div>
-                      <div className="actions-row">
-                        <span className="pill">{invitation.role}</span>
-                        {invitation.status === "pending" &&
-                        isInvitationForCurrentUser(invitation, state.currentUser) ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => void handleAcceptInvitation(invitation.id)}
-                            disabled={acceptingInvitationId === invitation.id}
-                          >
-                            {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
-                          </button>
-                        ) : null}
-                        {invitation.status === "pending" && isOrgAdmin ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => void handleRevokeInvitation(invitation.id)}
-                            disabled={revokingInvitationId === invitation.id}
-                          >
-                            {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
+                  <ul className="list">
+                    {state.invitations.length === 0 ? (
+                      <li className="empty-state">No invitations yet.</li>
+                    ) : null}
+                    {state.invitations.map((invitation) => (
+                      <li key={invitation.id} className="list__item">
+                        <div>
+                          <strong>{invitation.email}</strong>
+                          <p>{invitation.status}</p>
+                        </div>
+                        <div className="actions-row">
+                          <span className="pill">{invitation.role}</span>
+                          {invitation.status === "pending" &&
+                          isInvitationForCurrentUser(invitation, state.currentUser) ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleAcceptInvitation(invitation.id)}
+                              disabled={acceptingInvitationId === invitation.id}
+                            >
+                              {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
+                            </button>
+                          ) : null}
+                          {invitation.status === "pending" && isOrgAdmin ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleRevokeInvitation(invitation.id)}
+                              disabled={revokingInvitationId === invitation.id}
+                            >
+                              {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            ) : null}
           </div>
 
           <div className="dashboard-section">
@@ -895,91 +959,106 @@ function App() {
                   organization.
                 </p>
               </div>
+              <div className="section-heading__actions">
+                <span className="section-tag">
+                  {state.zones.length} zones{selectedZone ? ` • ${selectedZone.name}` : ""}
+                </span>
+                <button
+                  type="button"
+                  className="section-toggle"
+                  aria-expanded={showDnsSection}
+                  onClick={() => toggleMobileSection("dns")}
+                >
+                  {showDnsSection ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
-            <div className="dashboard-grid dashboard-grid--dns">
-              <section className="panel dns-panel dns-panel--zones">
-                <div className="panel__header">
-                  <div>
-                    <p className="panel__label">DNS zones</p>
-                    <h2>{state.zones.length}</h2>
+            {showDnsSection ? (
+              <div className="dashboard-grid dashboard-grid--dns">
+                <section className="panel dns-panel dns-panel--zones">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">DNS zones</p>
+                      <h2>{state.zones.length}</h2>
+                    </div>
+                    <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
                   </div>
-                  <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
-                </div>
-                <ul className="list">
-                  {state.zones.length === 0 ? (
-                    <li className="empty-state">No zones created yet.</li>
-                  ) : null}
-                  {state.zones.map((zone) => (
-                    <li
-                      key={zone.id}
-                      className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
-                    >
-                      <div>
-                        <strong>{zone.name}</strong>
-                        <p>{zone.provider}</p>
-                        <code>{zone.powerdnsZoneId}</code>
-                      </div>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => setSelectedZoneId(zone.id)}
-                      >
-                        {selectedZoneId === zone.id ? "Selected" : "Open records"}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="panel dns-panel dns-panel--records">
-                <p className="panel__label">Zone records</p>
-                <h2>{selectedZone?.name ?? "Select a zone"}</h2>
-                <p className="section-subtitle">
-                  {selectedZone
-                    ? "Records are loaded directly from PowerDNS for the selected zone."
-                    : "Choose a zone to inspect and manage its records."}
-                </p>
-                {recordsLoading ? <p>Loading records...</p> : null}
-                {!recordsLoading && selectedZoneId ? (
                   <ul className="list">
-                    {records.flatMap((rrset) =>
-                      rrset.records.map((record) => {
-                        const key = `${rrset.name}:${rrset.type}:${record.content}`;
-
-                        return (
-                          <li key={key} className="list__item">
-                            <div>
-                              <strong>
-                                {rrset.name} {rrset.type}
-                              </strong>
-                              <p>
-                                TTL {rrset.ttl} • {record.content}
-                              </p>
-                            </div>
-                            {isOrgAdmin ? (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() =>
-                                  void handleDeleteRecord(rrset.name, rrset.type, record.content)
-                                }
-                                disabled={deletingRecordKey === key}
-                              >
-                                {deletingRecordKey === key ? "Deleting..." : "Delete"}
-                              </button>
-                            ) : null}
-                          </li>
-                        );
-                      }),
-                    )}
+                    {state.zones.length === 0 ? (
+                      <li className="empty-state">No zones created yet.</li>
+                    ) : null}
+                    {state.zones.map((zone) => (
+                      <li
+                        key={zone.id}
+                        className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
+                      >
+                        <div>
+                          <strong>{zone.name}</strong>
+                          <p>{zone.provider}</p>
+                          <code>{zone.powerdnsZoneId}</code>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setSelectedZoneId(zone.id)}
+                        >
+                          {selectedZoneId === zone.id ? "Selected" : "Open records"}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
-                ) : null}
-                {!recordsLoading && selectedZoneId && records.length === 0 ? (
-                  <p className="empty-state">No records found for the selected zone.</p>
-                ) : null}
-              </section>
-            </div>
+                </section>
+
+                <section className="panel dns-panel dns-panel--records">
+                  <p className="panel__label">Zone records</p>
+                  <h2>{selectedZone?.name ?? "Select a zone"}</h2>
+                  <p className="section-subtitle">
+                    {selectedZone
+                      ? "Records are loaded directly from PowerDNS for the selected zone."
+                      : "Choose a zone to inspect and manage its records."}
+                  </p>
+                  {recordsLoading ? <p>Loading records...</p> : null}
+                  {!recordsLoading && selectedZoneId ? (
+                    <ul className="list">
+                      {records.flatMap((rrset) =>
+                        rrset.records.map((record) => {
+                          const key = `${rrset.name}:${rrset.type}:${record.content}`;
+
+                          return (
+                            <li key={key} className="list__item">
+                              <div>
+                                <strong>
+                                  {rrset.name} {rrset.type}
+                                </strong>
+                                <p>
+                                  TTL {rrset.ttl} • {record.content}
+                                </p>
+                              </div>
+                              {isOrgAdmin ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    void handleDeleteRecord(rrset.name, rrset.type, record.content)
+                                  }
+                                  disabled={deletingRecordKey === key}
+                                >
+                                  {deletingRecordKey === key ? "Deleting..." : "Delete"}
+                                </button>
+                              ) : null}
+                            </li>
+                          );
+                        }),
+                      )}
+                    </ul>
+                  ) : null}
+                  {!recordsLoading && selectedZoneId && records.length === 0 ? (
+                    <p className="empty-state">No records found for the selected zone.</p>
+                  ) : null}
+                </section>
+              </div>
+            ) : null}
           </div>
 
           <div className="dashboard-section">
@@ -992,130 +1071,190 @@ function App() {
                   organization.
                 </p>
               </div>
+              <div className="section-heading__actions">
+                <span className="section-tag">3 workflows</span>
+                <button
+                  type="button"
+                  className="section-toggle"
+                  aria-expanded={showActionsSection}
+                  onClick={() => toggleMobileSection("actions")}
+                >
+                  {showActionsSection ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
-            <div className="dashboard-grid dashboard-grid--actions">
-              <section className="panel">
-                <p className="panel__label">Create DNS zone</p>
-                <h2>New zone</h2>
-                <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
-                  <label>
-                    Zone name
-                    <input
-                      value={zoneName}
-                      onChange={(event) => setZoneName(event.target.value)}
-                      type="text"
-                      required
-                    />
-                  </label>
-
-                  <button type="submit" disabled={creatingZone || !isOrgAdmin}>
-                    {creatingZone ? "Creating..." : "Create zone"}
-                  </button>
-                </form>
-              </section>
-
-              <section className="panel">
-                <p className="panel__label">Create DNS record</p>
-                <h2>New record</h2>
-                <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
-                  <label>
-                    Zone
-                    <select
-                      value={selectedZoneId}
-                      onChange={(event) => setSelectedZoneId(event.target.value)}
+            {showActionsSection ? (
+              <div className="dashboard-grid dashboard-grid--actions">
+                <section className="panel action-panel">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">Create DNS zone</p>
+                      <h2>New zone</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="section-toggle"
+                      aria-expanded={showZoneActionPanel}
+                      onClick={() => toggleMobileActionPanel("zone")}
                     >
-                      <option value="">Select zone</option>
-                      {state.zones.map((zone) => (
-                        <option key={zone.id} value={zone.id}>
-                          {zone.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      {showZoneActionPanel ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showZoneActionPanel ? (
+                    <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
+                      <label>
+                        Zone name
+                        <input
+                          value={zoneName}
+                          onChange={(event) => setZoneName(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-                  <label>
-                    Name
-                    <input
-                      value={recordName}
-                      onChange={(event) => setRecordName(event.target.value)}
-                      type="text"
-                      required
-                    />
-                  </label>
+                      <button type="submit" disabled={creatingZone || !isOrgAdmin}>
+                        {creatingZone ? "Creating..." : "Create zone"}
+                      </button>
+                    </form>
+                  ) : null}
+                </section>
 
-                  <label>
-                    Type
-                    <select
-                      value={recordType}
-                      onChange={(event) => setRecordType(event.target.value)}
+                <section className="panel action-panel">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">Create DNS record</p>
+                      <h2>New record</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="section-toggle"
+                      aria-expanded={showRecordActionPanel}
+                      onClick={() => toggleMobileActionPanel("record")}
                     >
-                      <option value="A">A</option>
-                      <option value="AAAA">AAAA</option>
-                      <option value="CNAME">CNAME</option>
-                      <option value="TXT">TXT</option>
-                      <option value="MX">MX</option>
-                    </select>
-                  </label>
+                      {showRecordActionPanel ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showRecordActionPanel ? (
+                    <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
+                      <label>
+                        Zone
+                        <select
+                          value={selectedZoneId}
+                          onChange={(event) => setSelectedZoneId(event.target.value)}
+                        >
+                          <option value="">Select zone</option>
+                          {state.zones.map((zone) => (
+                            <option key={zone.id} value={zone.id}>
+                              {zone.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                  <label>
-                    Content
-                    <input
-                      value={recordContent}
-                      onChange={(event) => setRecordContent(event.target.value)}
-                      type="text"
-                      required
-                    />
-                  </label>
+                      <label>
+                        Name
+                        <input
+                          value={recordName}
+                          onChange={(event) => setRecordName(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-                  <label>
-                    TTL
-                    <input
-                      value={recordTtl}
-                      onChange={(event) => setRecordTtl(event.target.value)}
-                      type="number"
-                      min="1"
-                      required
-                    />
-                  </label>
+                      <label>
+                        Type
+                        <select
+                          value={recordType}
+                          onChange={(event) => setRecordType(event.target.value)}
+                        >
+                          <option value="A">A</option>
+                          <option value="AAAA">AAAA</option>
+                          <option value="CNAME">CNAME</option>
+                          <option value="TXT">TXT</option>
+                          <option value="MX">MX</option>
+                        </select>
+                      </label>
 
-                  <button type="submit" disabled={savingRecord || !isOrgAdmin || !selectedZoneId}>
-                    {savingRecord ? "Saving..." : "Create record"}
-                  </button>
-                </form>
-              </section>
+                      <label>
+                        Content
+                        <input
+                          value={recordContent}
+                          onChange={(event) => setRecordContent(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-              <section className="panel">
-                <p className="panel__label">Create invitation</p>
-                <h2>Invite member</h2>
-                <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
-                  <label>
-                    Email
-                    <input
-                      value={inviteEmail}
-                      onChange={(event) => setInviteEmail(event.target.value)}
-                      type="email"
-                      required
-                    />
-                  </label>
+                      <label>
+                        TTL
+                        <input
+                          value={recordTtl}
+                          onChange={(event) => setRecordTtl(event.target.value)}
+                          type="number"
+                          min="1"
+                          required
+                        />
+                      </label>
 
-                  <label>
-                    Role
-                    <select
-                      value={inviteRole}
-                      onChange={(event) => setInviteRole(event.target.value as "admin" | "user")}
+                      <button
+                        type="submit"
+                        disabled={savingRecord || !isOrgAdmin || !selectedZoneId}
+                      >
+                        {savingRecord ? "Saving..." : "Create record"}
+                      </button>
+                    </form>
+                  ) : null}
+                </section>
+
+                <section className="panel action-panel">
+                  <div className="panel__header">
+                    <div>
+                      <p className="panel__label">Create invitation</p>
+                      <h2>Invite member</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="section-toggle"
+                      aria-expanded={showInviteActionPanel}
+                      onClick={() => toggleMobileActionPanel("invite")}
                     >
-                      <option value="user">user</option>
-                      <option value="admin">admin</option>
-                    </select>
-                  </label>
+                      {showInviteActionPanel ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showInviteActionPanel ? (
+                    <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
+                      <label>
+                        Email
+                        <input
+                          value={inviteEmail}
+                          onChange={(event) => setInviteEmail(event.target.value)}
+                          type="email"
+                          required
+                        />
+                      </label>
 
-                  <button type="submit" disabled={submitting || !isOrgAdmin}>
-                    {submitting ? "Saving..." : "Create invitation"}
-                  </button>
-                </form>
-              </section>
-            </div>
+                      <label>
+                        Role
+                        <select
+                          value={inviteRole}
+                          onChange={(event) =>
+                            setInviteRole(event.target.value as "admin" | "user")
+                          }
+                        >
+                          <option value="user">user</option>
+                          <option value="admin">admin</option>
+                        </select>
+                      </label>
+
+                      <button type="submit" disabled={submitting || !isOrgAdmin}>
+                        {submitting ? "Saving..." : "Create invitation"}
+                      </button>
+                    </form>
+                  ) : null}
+                </section>
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
