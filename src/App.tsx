@@ -811,21 +811,15 @@ function App() {
               <div>
                 <p className="panel__label">Organization</p>
                 <h2>Access and membership</h2>
-                <p className="section-subtitle">
-                  Manage organization context, members and invitations for the selected tenant.
-                </p>
               </div>
               <div className="section-heading__actions">
-                <span className="section-tag">
-                  {state.members.length} members • {state.invitations.length} invites
-                </span>
                 <button
                   type="button"
                   className="section-toggle"
                   aria-expanded={showOrganizationSection}
                   onClick={() => toggleMobileSection("organization")}
                 >
-                  {showOrganizationSection ? "Hide" : "Show"}
+                  {showOrganizationSection ? "Close" : "Open"}
                 </button>
               </div>
             </div>
@@ -954,22 +948,15 @@ function App() {
               <div>
                 <p className="panel__label">DNS</p>
                 <h2>Zones and records</h2>
-                <p className="section-subtitle">
-                  Create zones, select an active zone and manage records for the current
-                  organization.
-                </p>
               </div>
               <div className="section-heading__actions">
-                <span className="section-tag">
-                  {state.zones.length} zones{selectedZone ? ` • ${selectedZone.name}` : ""}
-                </span>
                 <button
                   type="button"
                   className="section-toggle"
                   aria-expanded={showDnsSection}
                   onClick={() => toggleMobileSection("dns")}
                 >
-                  {showDnsSection ? "Hide" : "Show"}
+                  {showDnsSection ? "Close" : "Open"}
                 </button>
               </div>
             </div>
@@ -1066,20 +1053,15 @@ function App() {
               <div>
                 <p className="panel__label">Actions</p>
                 <h2>Create and manage</h2>
-                <p className="section-subtitle">
-                  All creation flows live here. They are only writable for admins in the selected
-                  organization.
-                </p>
               </div>
               <div className="section-heading__actions">
-                <span className="section-tag">3 workflows</span>
                 <button
                   type="button"
                   className="section-toggle"
                   aria-expanded={showActionsSection}
                   onClick={() => toggleMobileSection("actions")}
                 >
-                  {showActionsSection ? "Hide" : "Show"}
+                  {showActionsSection ? "Close" : "Open"}
                 </button>
               </div>
             </div>
@@ -1098,7 +1080,7 @@ function App() {
                       aria-expanded={showZoneActionPanel}
                       onClick={() => toggleMobileActionPanel("zone")}
                     >
-                      {showZoneActionPanel ? "Hide" : "Show"}
+                      {showZoneActionPanel ? "Close" : "Open"}
                     </button>
                   </div>
                   {showZoneActionPanel ? (
@@ -1132,7 +1114,7 @@ function App() {
                       aria-expanded={showRecordActionPanel}
                       onClick={() => toggleMobileActionPanel("record")}
                     >
-                      {showRecordActionPanel ? "Hide" : "Show"}
+                      {showRecordActionPanel ? "Close" : "Open"}
                     </button>
                   </div>
                   {showRecordActionPanel ? (
@@ -1219,7 +1201,7 @@ function App() {
                       aria-expanded={showInviteActionPanel}
                       onClick={() => toggleMobileActionPanel("invite")}
                     >
-                      {showInviteActionPanel ? "Hide" : "Show"}
+                      {showInviteActionPanel ? "Close" : "Open"}
                     </button>
                   </div>
                   {showInviteActionPanel ? (
