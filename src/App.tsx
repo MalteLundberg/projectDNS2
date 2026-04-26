@@ -77,7 +77,7 @@ type DashboardState = {
   zones: Zone[];
 };
 
-type DashboardSectionKey = "access-membership" | "zones-records" | "create-manage";
+type DashboardSectionKey = "account" | "access-membership" | "zones-records" | "create-manage";
 
 function isInvitationForCurrentUser(
   invitation: Invitation,
@@ -144,6 +144,7 @@ function App() {
   const [signingInSupervisor, setSigningInSupervisor] = useState(false);
   const [organizationName, setOrganizationName] = useState("My Organization");
   const [creatingOrganization, setCreatingOrganization] = useState(false);
+  const [activeSection, setActiveSection] = useState<DashboardSectionKey>("zones-records");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function loadDashboard() {
@@ -612,11 +613,7 @@ function App() {
 
   function navigateToSection(sectionId: DashboardSectionKey) {
     setMobileMenuOpen(false);
-    const element = document.getElementById(sectionId);
-
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setActiveSection(sectionId);
   }
 
   const isOrgAdmin = state.activeOrganization?.role === "admin";
@@ -746,103 +743,115 @@ function App() {
 
       {state.currentUser && state.activeOrganization ? (
         <>
-          <section className="top-bar panel panel--highlight">
-            <div className="top-bar__identity">
-              <div>
-                <p className="panel__label">Active organization</p>
-                <h2>{state.activeOrganization.name}</h2>
-              </div>
-              <div className="top-bar__meta">
+          <button
+            type="button"
+            className="dashboard-mobile-menu-button"
+            aria-expanded={mobileMenuOpen}
+            aria-label="Open section menu"
+            onClick={() => setMobileMenuOpen((current) => !current)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+
+          <div className="dashboard-shell">
+            <aside className="dashboard-sidebar" aria-label="Dashboard sections">
+              <div className="dashboard-sidebar__identity">
+                <strong>{state.activeOrganization.name}</strong>
                 <span>{state.activeOrganization.role}</span>
-                <span>{state.currentUser.name}</span>
+              </div>
+
+              <div
+                className={`dashboard-sidebar__nav${mobileMenuOpen ? " dashboard-sidebar__nav--open" : ""}`}
+              >
                 <button
                   type="button"
-                  className="top-bar__signout"
-                  onClick={() => void handleLogout()}
+                  className={`dashboard-sidebar__link${activeSection === "account" ? " dashboard-sidebar__link--active" : ""}`}
+                  onClick={() => navigateToSection("account")}
                 >
-                  Sign out
+                  Account
                 </button>
-              </div>
-            </div>
-            <div className="top-bar__controls">
-              <label className="inline-field">
-                <span>Choose organization</span>
-                <select
-                  value={activeOrganizationId}
-                  onChange={(event) => void handleOrganizationChange(event.target.value)}
-                >
-                  {state.memberships.map((membership) => (
-                    <option key={membership.organizationId} value={membership.organizationId}>
-                      {membership.organizationName} ({membership.role})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <div className="dashboard-layout">
-            <nav className="dashboard-nav panel panel--subtle" aria-label="Dashboard sections">
-              <p className="dashboard-nav__title">Navigate</p>
-              <button
-                type="button"
-                className="dashboard-nav__menu-button"
-                aria-expanded={mobileMenuOpen}
-                aria-label="Open section menu"
-                onClick={() => setMobileMenuOpen((current) => !current)}
-              >
-                <span />
-                <span />
-                <span />
-              </button>
-              <div
-                className={`dashboard-nav__links${mobileMenuOpen ? " dashboard-nav__links--open" : ""}`}
-              >
-                <a
-                  href="#access-membership"
-                  className="dashboard-nav__link"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigateToSection("access-membership");
-                  }}
+                <button
+                  type="button"
+                  className={`dashboard-sidebar__link${activeSection === "access-membership" ? " dashboard-sidebar__link--active" : ""}`}
+                  onClick={() => navigateToSection("access-membership")}
                 >
                   Access and membership
-                </a>
-                <a
-                  href="#zones-records"
-                  className="dashboard-nav__link"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigateToSection("zones-records");
-                  }}
+                </button>
+                <button
+                  type="button"
+                  className={`dashboard-sidebar__link${activeSection === "zones-records" ? " dashboard-sidebar__link--active" : ""}`}
+                  onClick={() => navigateToSection("zones-records")}
                 >
                   Zones and records
-                </a>
-                <a
-                  href="#create-manage"
-                  className="dashboard-nav__link"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigateToSection("create-manage");
-                  }}
+                </button>
+                <button
+                  type="button"
+                  className={`dashboard-sidebar__link${activeSection === "create-manage" ? " dashboard-sidebar__link--active" : ""}`}
+                  onClick={() => navigateToSection("create-manage")}
                 >
                   Create and manage
-                </a>
+                </button>
               </div>
-            </nav>
+            </aside>
 
-            <div className="dashboard-content">
-              <div className="dashboard-section" id="access-membership">
-                <div className="section-heading">
-                  <div>
-                    <h2>Access and membership</h2>
-                  </div>
+            <section className="dashboard-main">
+              <header className="dashboard-main__header">
+                <h2>
+                  {activeSection === "account"
+                    ? "Account"
+                    : activeSection === "access-membership"
+                      ? "Access and membership"
+                      : activeSection === "zones-records"
+                        ? "Zones and records"
+                        : "Create and manage"}
+                </h2>
+              </header>
+
+              {activeSection === "account" ? (
+                <div className="dashboard-grid dashboard-grid--account">
+                  <section className="panel">
+                    <h3>Profile</h3>
+                    <p>{state.currentUser.name}</p>
+                  </section>
+
+                  <section className="panel">
+                    <h3>Organization</h3>
+                    <p>{state.activeOrganization.name}</p>
+                    <p className="account-meta">Role: {state.activeOrganization.role}</p>
+                    <label className="inline-field">
+                      <span>Choose organization</span>
+                      <select
+                        value={activeOrganizationId}
+                        onChange={(event) => void handleOrganizationChange(event.target.value)}
+                      >
+                        {state.memberships.map((membership) => (
+                          <option key={membership.organizationId} value={membership.organizationId}>
+                            {membership.organizationName} ({membership.role})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </section>
+
+                  <section className="panel">
+                    <h3>Session</h3>
+                    <button
+                      type="button"
+                      className="secondary-button secondary-button--block"
+                      onClick={() => void handleLogout()}
+                    >
+                      Sign out
+                    </button>
+                  </section>
                 </div>
+              ) : null}
 
+              {activeSection === "access-membership" ? (
                 <div className="dashboard-grid dashboard-grid--organization dashboard-grid--organization-extended">
                   <section className="panel">
-                    <p className="panel__label">Organizations in context</p>
-                    <h2>{state.organizations.length}</h2>
+                    <h3>Organizations in context</h3>
                     <ul className="list">
                       {state.organizations.map((organization) => (
                         <li key={organization.id} className="list__item">
@@ -859,12 +868,7 @@ function App() {
                   </section>
 
                   <section className="panel">
-                    <div className="panel__header">
-                      <div>
-                        <p className="panel__label">Members</p>
-                        <h2>{state.members.length}</h2>
-                      </div>
-                    </div>
+                    <h3>Members</h3>
                     <ul className="list">
                       {state.members.map((member) => (
                         <li key={member.id} className="list__item">
@@ -909,10 +913,7 @@ function App() {
 
                   <section className="panel">
                     <div className="panel__header">
-                      <div>
-                        <p className="panel__label">Invitations</p>
-                        <h2>{state.invitations.length}</h2>
-                      </div>
+                      <h3>Invitations</h3>
                       <span className="section-tag">Admin workspace</span>
                     </div>
                     <ul className="list">
@@ -955,8 +956,7 @@ function App() {
                   </section>
 
                   <section className="panel">
-                    <p className="panel__label">Invite member</p>
-                    <h2>New invitation</h2>
+                    <h3>Invite member</h3>
                     <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
                       <label>
                         Email
@@ -985,22 +985,13 @@ function App() {
                     </form>
                   </section>
                 </div>
-              </div>
+              ) : null}
 
-              <div className="dashboard-section" id="zones-records">
-                <div className="section-heading">
-                  <div>
-                    <h2>Zones and records</h2>
-                  </div>
-                </div>
-
+              {activeSection === "zones-records" ? (
                 <div className="dashboard-grid dashboard-grid--dns">
                   <section className="panel dns-panel dns-panel--zones">
                     <div className="panel__header">
-                      <div>
-                        <p className="panel__label">DNS zones</p>
-                        <h2>{state.zones.length}</h2>
-                      </div>
+                      <h3>Zones</h3>
                       <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
                     </div>
                     <ul className="list">
@@ -1030,8 +1021,7 @@ function App() {
                   </section>
 
                   <section className="panel dns-panel dns-panel--records">
-                    <p className="panel__label">Zone records</p>
-                    <h2>{selectedZone?.name ?? "Select a zone"}</h2>
+                    <h3>{selectedZone?.name ?? "Select a zone"}</h3>
                     <p className="section-subtitle">
                       {selectedZone
                         ? "Records are loaded directly from PowerDNS for the selected zone."
@@ -1077,20 +1067,13 @@ function App() {
                     ) : null}
                   </section>
                 </div>
-              </div>
+              ) : null}
 
-              <div className="dashboard-section" id="create-manage">
-                <div className="section-heading">
-                  <div>
-                    <h2>Create and manage</h2>
-                  </div>
-                </div>
-
+              {activeSection === "create-manage" ? (
                 <div className="dashboard-grid dashboard-grid--actions dashboard-grid--actions-compact">
                   <section className="panel action-panel">
                     <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
-                      <p className="panel__label">Create DNS zone</p>
-                      <h2>New zone</h2>
+                      <h3>Create DNS zone</h3>
                       <label>
                         Zone name
                         <input
@@ -1109,8 +1092,7 @@ function App() {
 
                   <section className="panel action-panel">
                     <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
-                      <p className="panel__label">Create DNS record</p>
-                      <h2>New record</h2>
+                      <h3>Create DNS record</h3>
                       <label>
                         Zone
                         <select
@@ -1177,8 +1159,8 @@ function App() {
                     </form>
                   </section>
                 </div>
-              </div>
-            </div>
+              ) : null}
+            </section>
           </div>
         </>
       ) : null}
