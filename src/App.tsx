@@ -618,20 +618,23 @@ function App() {
 
   const isOrgAdmin = state.activeOrganization?.role === "admin";
   const selectedZone = state.zones.find((zone) => zone.id === selectedZoneId) ?? null;
+  const isDashboardView = Boolean(state.currentUser && state.activeOrganization);
 
   return (
-    <main className="app-shell">
-      <div className="hero">
-        {!state.currentUser ? (
-          <>
-            <h1>Manage organizations, access and DNS from one place</h1>
-            <p className="intro">
-              A unified workspace for organizations, invitations, members, DNS zones and records.
-              Built to keep each organization isolated in its own DNS environment.
-            </p>
-          </>
-        ) : null}
-      </div>
+    <main className={`app-shell${isDashboardView ? " app-shell--dashboard" : ""}`}>
+      {!isDashboardView ? (
+        <div className="hero">
+          {!state.currentUser ? (
+            <>
+              <h1>Manage organizations, access and DNS from one place</h1>
+              <p className="intro">
+                A unified workspace for organizations, invitations, members, DNS zones and records.
+                Built to keep each organization isolated in its own DNS environment.
+              </p>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {state.error ? <p className="banner banner--error">{state.error}</p> : null}
       {state.loading ? <p className="banner">Loading dashboard...</p> : null}
@@ -797,373 +800,376 @@ function App() {
             </aside>
 
             <section className="dashboard-main">
-              <header className="dashboard-main__header">
-                <h2>
-                  {activeSection === "account"
-                    ? "Account"
-                    : activeSection === "access-membership"
-                      ? "Access and membership"
-                      : activeSection === "zones-records"
-                        ? "Zones and records"
-                        : "Create and manage"}
-                </h2>
-              </header>
+              <div className="dashboard-main__inner">
+                <header className="dashboard-main__header">
+                  <h2>
+                    {activeSection === "account"
+                      ? "Account"
+                      : activeSection === "access-membership"
+                        ? "Access and membership"
+                        : activeSection === "zones-records"
+                          ? "Zones and records"
+                          : "Create and manage"}
+                  </h2>
+                </header>
 
-              {activeSection === "account" ? (
-                <div className="dashboard-grid dashboard-grid--account">
-                  <section className="panel">
-                    <h3>Profile</h3>
-                    <p>{state.currentUser.name}</p>
-                  </section>
+                {activeSection === "account" ? (
+                  <div className="dashboard-grid dashboard-grid--account">
+                    <section className="panel">
+                      <h3>Profile</h3>
+                      <p>{state.currentUser.name}</p>
+                    </section>
 
-                  <section className="panel">
-                    <h3>Organization</h3>
-                    <p>{state.activeOrganization.name}</p>
-                    <p className="account-meta">Role: {state.activeOrganization.role}</p>
-                    <label className="inline-field">
-                      <span>Choose organization</span>
-                      <select
-                        value={activeOrganizationId}
-                        onChange={(event) => void handleOrganizationChange(event.target.value)}
-                      >
-                        {state.memberships.map((membership) => (
-                          <option key={membership.organizationId} value={membership.organizationId}>
-                            {membership.organizationName} ({membership.role})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </section>
-
-                  <section className="panel">
-                    <h3>Session</h3>
-                    <button
-                      type="button"
-                      className="secondary-button secondary-button--block"
-                      onClick={() => void handleLogout()}
-                    >
-                      Sign out
-                    </button>
-                  </section>
-                </div>
-              ) : null}
-
-              {activeSection === "access-membership" ? (
-                <div className="dashboard-grid dashboard-grid--organization dashboard-grid--organization-extended">
-                  <section className="panel">
-                    <h3>Organizations in context</h3>
-                    <ul className="list">
-                      {state.organizations.map((organization) => (
-                        <li key={organization.id} className="list__item">
-                          <div>
-                            <strong>{organization.name}</strong>
-                            <p>{organization.slug}</p>
-                          </div>
-                          <span className="pill">
-                            {organization.id === state.activeOrganization?.id ? "active" : "available"}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-
-                  <section className="panel">
-                    <h3>Members</h3>
-                    <ul className="list">
-                      {state.members.map((member) => (
-                        <li key={member.id} className="list__item">
-                          <div className="member-summary">
-                            <strong>{member.userName}</strong>
-                            <p>{member.userEmail}</p>
-                          </div>
-                          <div className="actions-row actions-row--member">
-                            {isOrgAdmin ? (
-                              <select
-                                className="role-select"
-                                value={member.role}
-                                onChange={(event) =>
-                                  void handleMemberRoleChange(
-                                    member.id,
-                                    event.target.value as "admin" | "user",
-                                  )
-                                }
-                                disabled={updatingMemberId === member.id}
-                              >
-                                <option value="user">user</option>
-                                <option value="admin">admin</option>
-                              </select>
-                            ) : (
-                              <span className="pill">{member.role}</span>
-                            )}
-                            {isOrgAdmin && member.userId !== state.currentUser?.id ? (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => void handleRemoveMember(member.id)}
-                                disabled={removingMemberId === member.id}
-                              >
-                                {removingMemberId === member.id ? "Removing..." : "Remove"}
-                              </button>
-                            ) : null}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-
-                  <section className="panel">
-                    <div className="panel__header">
-                      <h3>Invitations</h3>
-                      <span className="section-tag">Admin workspace</span>
-                    </div>
-                    <ul className="list">
-                      {state.invitations.length === 0 ? (
-                        <li className="empty-state">No invitations yet.</li>
-                      ) : null}
-                      {state.invitations.map((invitation) => (
-                        <li key={invitation.id} className="list__item">
-                          <div>
-                            <strong>{invitation.email}</strong>
-                            <p>{invitation.status}</p>
-                          </div>
-                          <div className="actions-row">
-                            <span className="pill">{invitation.role}</span>
-                            {invitation.status === "pending" &&
-                            isInvitationForCurrentUser(invitation, state.currentUser) ? (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => void handleAcceptInvitation(invitation.id)}
-                                disabled={acceptingInvitationId === invitation.id}
-                              >
-                                {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
-                              </button>
-                            ) : null}
-                            {invitation.status === "pending" && isOrgAdmin ? (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => void handleRevokeInvitation(invitation.id)}
-                                disabled={revokingInvitationId === invitation.id}
-                              >
-                                {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
-                              </button>
-                            ) : null}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-
-                  <section className="panel">
-                    <h3>Invite member</h3>
-                    <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
-                      <label>
-                        Email
-                        <input
-                          value={inviteEmail}
-                          onChange={(event) => setInviteEmail(event.target.value)}
-                          type="email"
-                          required
-                        />
-                      </label>
-
-                      <label>
-                        Role
+                    <section className="panel">
+                      <h3>Organization</h3>
+                      <p>{state.activeOrganization.name}</p>
+                      <p className="account-meta">Role: {state.activeOrganization.role}</p>
+                      <label className="inline-field">
+                        <span>Choose organization</span>
                         <select
-                          value={inviteRole}
-                          onChange={(event) => setInviteRole(event.target.value as "admin" | "user")}
+                          value={activeOrganizationId}
+                          onChange={(event) => void handleOrganizationChange(event.target.value)}
                         >
-                          <option value="user">user</option>
-                          <option value="admin">admin</option>
-                        </select>
-                      </label>
-
-                      <button type="submit" disabled={submitting || !isOrgAdmin}>
-                        {submitting ? "Saving..." : "Create invitation"}
-                      </button>
-                    </form>
-                  </section>
-                </div>
-              ) : null}
-
-              {activeSection === "zones-records" ? (
-                <div className="dashboard-grid dashboard-grid--dns">
-                  <section className="panel dns-panel dns-panel--zones">
-                    <div className="panel__header">
-                      <h3>Zones</h3>
-                      <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
-                    </div>
-                    <ul className="list">
-                      {state.zones.length === 0 ? (
-                        <li className="empty-state">No zones created yet.</li>
-                      ) : null}
-                      {state.zones.map((zone) => (
-                        <li
-                          key={zone.id}
-                          className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
-                        >
-                          <div>
-                            <strong>{zone.name}</strong>
-                            <p>{zone.provider}</p>
-                            <code>{zone.powerdnsZoneId}</code>
-                          </div>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => setSelectedZoneId(zone.id)}
-                          >
-                            {selectedZoneId === zone.id ? "Selected" : "Open records"}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-
-                  <section className="panel dns-panel dns-panel--records">
-                    <h3>{selectedZone?.name ?? "Select a zone"}</h3>
-                    <p className="section-subtitle">
-                      {selectedZone
-                        ? "Records are loaded directly from PowerDNS for the selected zone."
-                        : "Choose a zone to inspect and manage its records."}
-                    </p>
-                    {recordsLoading ? <p>Loading records...</p> : null}
-                    {!recordsLoading && selectedZoneId ? (
-                      <ul className="list">
-                        {records.flatMap((rrset) =>
-                          rrset.records.map((record) => {
-                            const key = `${rrset.name}:${rrset.type}:${record.content}`;
-
-                            return (
-                              <li key={key} className="list__item">
-                                <div>
-                                  <strong>
-                                    {rrset.name} {rrset.type}
-                                  </strong>
-                                  <p>
-                                    TTL {rrset.ttl} • {record.content}
-                                  </p>
-                                </div>
-                                {isOrgAdmin ? (
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    onClick={() =>
-                                      void handleDeleteRecord(rrset.name, rrset.type, record.content)
-                                    }
-                                    disabled={deletingRecordKey === key}
-                                  >
-                                    {deletingRecordKey === key ? "Deleting..." : "Delete"}
-                                  </button>
-                                ) : null}
-                              </li>
-                            );
-                          }),
-                        )}
-                      </ul>
-                    ) : null}
-                    {!recordsLoading && selectedZoneId && records.length === 0 ? (
-                      <p className="empty-state">No records found for the selected zone.</p>
-                    ) : null}
-                  </section>
-                </div>
-              ) : null}
-
-              {activeSection === "create-manage" ? (
-                <div className="dashboard-grid dashboard-grid--actions dashboard-grid--actions-compact">
-                  <section className="panel action-panel">
-                    <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
-                      <h3>Create DNS zone</h3>
-                      <label>
-                        Zone name
-                        <input
-                          value={zoneName}
-                          onChange={(event) => setZoneName(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <button type="submit" disabled={creatingZone || !isOrgAdmin}>
-                        {creatingZone ? "Creating..." : "Create zone"}
-                      </button>
-                    </form>
-                  </section>
-
-                  <section className="panel action-panel">
-                    <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
-                      <h3>Create DNS record</h3>
-                      <label>
-                        Zone
-                        <select
-                          value={selectedZoneId}
-                          onChange={(event) => setSelectedZoneId(event.target.value)}
-                        >
-                          <option value="">Select zone</option>
-                          {state.zones.map((zone) => (
-                            <option key={zone.id} value={zone.id}>
-                              {zone.name}
+                          {state.memberships.map((membership) => (
+                            <option key={membership.organizationId} value={membership.organizationId}>
+                              {membership.organizationName} ({membership.role})
                             </option>
                           ))}
                         </select>
                       </label>
+                    </section>
 
-                      <label>
-                        Name
-                        <input
-                          value={recordName}
-                          onChange={(event) => setRecordName(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <label>
-                        Type
-                        <select
-                          value={recordType}
-                          onChange={(event) => setRecordType(event.target.value)}
-                        >
-                          <option value="A">A</option>
-                          <option value="AAAA">AAAA</option>
-                          <option value="CNAME">CNAME</option>
-                          <option value="TXT">TXT</option>
-                          <option value="MX">MX</option>
-                        </select>
-                      </label>
-
-                      <label>
-                        Content
-                        <input
-                          value={recordContent}
-                          onChange={(event) => setRecordContent(event.target.value)}
-                          type="text"
-                          required
-                        />
-                      </label>
-
-                      <label>
-                        TTL
-                        <input
-                          value={recordTtl}
-                          onChange={(event) => setRecordTtl(event.target.value)}
-                          type="number"
-                          min="1"
-                          required
-                        />
-                      </label>
-
-                      <button type="submit" disabled={savingRecord || !isOrgAdmin || !selectedZoneId}>
-                        {savingRecord ? "Saving..." : "Create record"}
+                    <section className="panel">
+                      <h3>Session</h3>
+                      <button
+                        type="button"
+                        className="secondary-button secondary-button--block"
+                        onClick={() => void handleLogout()}
+                      >
+                        Sign out
                       </button>
-                    </form>
-                  </section>
-                </div>
-              ) : null}
+                    </section>
+                  </div>
+                ) : null}
+
+                {activeSection === "access-membership" ? (
+                  <div className="dashboard-grid dashboard-grid--organization dashboard-grid--organization-extended">
+                    <section className="panel">
+                      <h3>Organizations in context</h3>
+                      <ul className="list">
+                        {state.organizations.map((organization) => (
+                          <li key={organization.id} className="list__item">
+                            <div>
+                              <strong>{organization.name}</strong>
+                              <p>{organization.slug}</p>
+                            </div>
+                            <span className="pill">
+                              {organization.id === state.activeOrganization?.id ? "active" : "available"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="panel">
+                      <h3>Members</h3>
+                      <ul className="list">
+                        {state.members.map((member) => (
+                          <li key={member.id} className="list__item">
+                            <div className="member-summary">
+                              <strong>{member.userName}</strong>
+                              <p>{member.userEmail}</p>
+                            </div>
+                            <div className="actions-row actions-row--member">
+                              {isOrgAdmin ? (
+                                <select
+                                  className="role-select"
+                                  value={member.role}
+                                  onChange={(event) =>
+                                    void handleMemberRoleChange(
+                                      member.id,
+                                      event.target.value as "admin" | "user",
+                                    )
+                                  }
+                                  disabled={updatingMemberId === member.id}
+                                >
+                                  <option value="user">user</option>
+                                  <option value="admin">admin</option>
+                                </select>
+                              ) : (
+                                <span className="pill">{member.role}</span>
+                              )}
+                              {isOrgAdmin && member.userId !== state.currentUser?.id ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => void handleRemoveMember(member.id)}
+                                  disabled={removingMemberId === member.id}
+                                >
+                                  {removingMemberId === member.id ? "Removing..." : "Remove"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="panel">
+                      <div className="panel__header">
+                        <h3>Invitations</h3>
+                        <span className="section-tag">Admin workspace</span>
+                      </div>
+                      <ul className="list">
+                        {state.invitations.length === 0 ? (
+                          <li className="empty-state">No invitations yet.</li>
+                        ) : null}
+                        {state.invitations.map((invitation) => (
+                          <li key={invitation.id} className="list__item">
+                            <div>
+                              <strong>{invitation.email}</strong>
+                              <p>{invitation.status}</p>
+                            </div>
+                            <div className="actions-row">
+                              <span className="pill">{invitation.role}</span>
+                              {invitation.status === "pending" &&
+                              isInvitationForCurrentUser(invitation, state.currentUser) ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => void handleAcceptInvitation(invitation.id)}
+                                  disabled={acceptingInvitationId === invitation.id}
+                                >
+                                  {acceptingInvitationId === invitation.id ? "Accepting..." : "Accept"}
+                                </button>
+                              ) : null}
+                              {invitation.status === "pending" && isOrgAdmin ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => void handleRevokeInvitation(invitation.id)}
+                                  disabled={revokingInvitationId === invitation.id}
+                                >
+                                  {revokingInvitationId === invitation.id ? "Revoking..." : "Revoke"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="panel">
+                      <h3>Invite member</h3>
+                      <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
+                        <label>
+                          Email
+                          <input
+                            value={inviteEmail}
+                            onChange={(event) => setInviteEmail(event.target.value)}
+                            type="email"
+                            required
+                          />
+                        </label>
+
+                        <label>
+                          Role
+                          <select
+                            value={inviteRole}
+                            onChange={(event) => setInviteRole(event.target.value as "admin" | "user")}
+                          >
+                            <option value="user">user</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        </label>
+
+                        <button type="submit" disabled={submitting || !isOrgAdmin}>
+                          {submitting ? "Saving..." : "Create invitation"}
+                        </button>
+                      </form>
+                    </section>
+                  </div>
+                ) : null}
+
+                {activeSection === "zones-records" ? (
+                  <div className="dashboard-grid dashboard-grid--dns">
+                    <section className="panel dns-panel dns-panel--zones">
+                      <div className="panel__header">
+                        <h3>Zones</h3>
+                        <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
+                      </div>
+                      <ul className="list">
+                        {state.zones.length === 0 ? (
+                          <li className="empty-state">No zones created yet.</li>
+                        ) : null}
+                        {state.zones.map((zone) => (
+                          <li
+                            key={zone.id}
+                            className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
+                          >
+                            <div>
+                              <strong>{zone.name}</strong>
+                              <p>{zone.provider}</p>
+                              <code>{zone.powerdnsZoneId}</code>
+                            </div>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => setSelectedZoneId(zone.id)}
+                            >
+                              {selectedZoneId === zone.id ? "Selected" : "Open records"}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="panel dns-panel dns-panel--records">
+                      <h3>{selectedZone?.name ?? "Select a zone"}</h3>
+                      <p className="section-subtitle">
+                        {selectedZone
+                          ? "Records are loaded directly from PowerDNS for the selected zone."
+                          : "Choose a zone to inspect and manage its records."}
+                      </p>
+                      {recordsLoading ? <p>Loading records...</p> : null}
+                      {!recordsLoading && selectedZoneId ? (
+                        <ul className="list">
+                          {records.flatMap((rrset) =>
+                            rrset.records.map((record) => {
+                              const key = `${rrset.name}:${rrset.type}:${record.content}`;
+
+                              return (
+                                <li key={key} className="list__item">
+                                  <div>
+                                    <strong>
+                                      {rrset.name} {rrset.type}
+                                    </strong>
+                                    <p>
+                                      TTL {rrset.ttl} • {record.content}
+                                    </p>
+                                  </div>
+                                  {isOrgAdmin ? (
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      onClick={() =>
+                                        void handleDeleteRecord(rrset.name, rrset.type, record.content)
+                                      }
+                                      disabled={deletingRecordKey === key}
+                                    >
+                                      {deletingRecordKey === key ? "Deleting..." : "Delete"}
+                                    </button>
+                                  ) : null}
+                                </li>
+                              );
+                            }),
+                          )}
+                        </ul>
+                      ) : null}
+                      {!recordsLoading && selectedZoneId && records.length === 0 ? (
+                        <p className="empty-state">No records found for the selected zone.</p>
+                      ) : null}
+                    </section>
+                  </div>
+                ) : null}
+
+                {activeSection === "create-manage" ? (
+                  <div className="dashboard-grid dashboard-grid--actions dashboard-grid--actions-compact">
+                    <section className="panel action-panel">
+                      <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
+                        <h3>Create DNS zone</h3>
+                        <label>
+                          Zone name
+                          <input
+                            value={zoneName}
+                            onChange={(event) => setZoneName(event.target.value)}
+                            type="text"
+                            required
+                          />
+                        </label>
+
+                        <button type="submit" disabled={creatingZone || !isOrgAdmin}>
+                          {creatingZone ? "Creating..." : "Create zone"}
+                        </button>
+                      </form>
+                    </section>
+
+                    <section className="panel action-panel">
+                      <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
+                        <h3>Create DNS record</h3>
+                        <label>
+                          Zone
+                          <select
+                            value={selectedZoneId}
+                            onChange={(event) => setSelectedZoneId(event.target.value)}
+                          >
+                            <option value="">Select zone</option>
+                            {state.zones.map((zone) => (
+                              <option key={zone.id} value={zone.id}>
+                                {zone.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Name
+                          <input
+                            value={recordName}
+                            onChange={(event) => setRecordName(event.target.value)}
+                            type="text"
+                            required
+                          />
+                        </label>
+
+                        <label>
+                          Type
+                          <select
+                            value={recordType}
+                            onChange={(event) => setRecordType(event.target.value)}
+                          >
+                            <option value="A">A</option>
+                            <option value="AAAA">AAAA</option>
+                            <option value="CNAME">CNAME</option>
+                            <option value="TXT">TXT</option>
+                            <option value="MX">MX</option>
+                          </select>
+                        </label>
+
+                        <label>
+                          Content
+                          <input
+                            value={recordContent}
+                            onChange={(event) => setRecordContent(event.target.value)}
+                            type="text"
+                            required
+                          />
+                        </label>
+
+                        <label>
+                          TTL
+                          <input
+                            value={recordTtl}
+                            onChange={(event) => setRecordTtl(event.target.value)}
+                            type="number"
+                            min="1"
+                            required
+                          />
+                        </label>
+
+                        <button type="submit" disabled={savingRecord || !isOrgAdmin || !selectedZoneId}>
+                          {savingRecord ? "Saving..." : "Create record"}
+                        </button>
+                      </form>
+                    </section>
+                  </div>
+                ) : null}
+              </div>
             </section>
           </div>
         </>
       ) : null}
+
     </main>
   );
 }
