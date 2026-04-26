@@ -77,8 +77,7 @@ type DashboardState = {
   zones: Zone[];
 };
 
-type MobileSectionKey = "organization" | "dns" | "actions";
-type MobileActionPanelKey = "zone" | "record" | "invite";
+type DashboardSectionKey = "access-membership" | "zones-records" | "create-manage";
 
 function isInvitationForCurrentUser(
   invitation: Invitation,
@@ -145,17 +144,7 @@ function App() {
   const [signingInSupervisor, setSigningInSupervisor] = useState(false);
   const [organizationName, setOrganizationName] = useState("My Organization");
   const [creatingOrganization, setCreatingOrganization] = useState(false);
-  const [isMobileLayout, setIsMobileLayout] = useState(false);
-  const [mobileSections, setMobileSections] = useState<Record<MobileSectionKey, boolean>>({
-    organization: false,
-    dns: true,
-    actions: false,
-  });
-  const [mobileActionPanels, setMobileActionPanels] = useState<Record<MobileActionPanelKey, boolean>>({
-    zone: false,
-    record: true,
-    invite: false,
-  });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -230,7 +219,9 @@ function App() {
     const mediaQuery = window.matchMedia("(max-width: 720px)");
 
     function syncMobileLayout() {
-      setIsMobileLayout(mediaQuery.matches);
+      if (!mediaQuery.matches) {
+        setMobileMenuOpen(false);
+      }
     }
 
     syncMobileLayout();
@@ -619,39 +610,21 @@ function App() {
     }
   }
 
-  function toggleMobileSection(section: MobileSectionKey) {
-    setMobileSections((current) => ({
-      ...current,
-      [section]: !current[section],
-    }));
-  }
+  function navigateToSection(sectionId: DashboardSectionKey) {
+    setMobileMenuOpen(false);
+    const element = document.getElementById(sectionId);
 
-  function toggleMobileActionPanel(panel: MobileActionPanelKey) {
-    setMobileActionPanels((current) => ({
-      ...current,
-      [panel]: !current[panel],
-    }));
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   const isOrgAdmin = state.activeOrganization?.role === "admin";
   const selectedZone = state.zones.find((zone) => zone.id === selectedZoneId) ?? null;
-  const showOrganizationSection = !isMobileLayout || mobileSections.organization;
-  const showDnsSection = !isMobileLayout || mobileSections.dns;
-  const showActionsSection = !isMobileLayout || mobileSections.actions;
-  const showZoneActionPanel = !isMobileLayout || mobileActionPanels.zone;
-  const showRecordActionPanel = !isMobileLayout || mobileActionPanels.record;
-  const showInviteActionPanel = !isMobileLayout || mobileActionPanels.invite;
-  const showOrganizationHeaderToggle = isMobileLayout && !showOrganizationSection;
-  const showDnsHeaderToggle = isMobileLayout && !showDnsSection;
-  const showActionsHeaderToggle = isMobileLayout && !showActionsSection;
-  const showZonePanelHeaderToggle = isMobileLayout && !showZoneActionPanel;
-  const showRecordPanelHeaderToggle = isMobileLayout && !showRecordActionPanel;
-  const showInvitePanelHeaderToggle = isMobileLayout && !showInviteActionPanel;
 
   return (
     <main className="app-shell">
       <div className="hero">
-        <p className="eyebrow">Multi-tenant DNS manager</p>
         {!state.currentUser ? (
           <>
             <h1>Manage organizations, access and DNS from one place</h1>
@@ -808,29 +781,65 @@ function App() {
             </div>
           </section>
 
-          <div className="dashboard-section">
-            <div className="section-heading">
-              <div>
-                <p className="panel__label">Organization</p>
-                <h2>Access and membership</h2>
+          <div className="dashboard-layout">
+            <nav className="dashboard-nav panel panel--subtle" aria-label="Dashboard sections">
+              <p className="dashboard-nav__title">Navigate</p>
+              <button
+                type="button"
+                className="dashboard-nav__menu-button"
+                aria-expanded={mobileMenuOpen}
+                aria-label="Open section menu"
+                onClick={() => setMobileMenuOpen((current) => !current)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <div
+                className={`dashboard-nav__links${mobileMenuOpen ? " dashboard-nav__links--open" : ""}`}
+              >
+                <a
+                  href="#access-membership"
+                  className="dashboard-nav__link"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigateToSection("access-membership");
+                  }}
+                >
+                  Access and membership
+                </a>
+                <a
+                  href="#zones-records"
+                  className="dashboard-nav__link"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigateToSection("zones-records");
+                  }}
+                >
+                  Zones and records
+                </a>
+                <a
+                  href="#create-manage"
+                  className="dashboard-nav__link"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigateToSection("create-manage");
+                  }}
+                >
+                  Create and manage
+                </a>
               </div>
-              <div className="section-heading__actions">
-                {showOrganizationHeaderToggle ? (
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    aria-expanded={showOrganizationSection}
-                    onClick={() => toggleMobileSection("organization")}
-                  >
-                    Open
-                  </button>
-                ) : null}
-              </div>
-            </div>
+            </nav>
 
-            {showOrganizationSection ? (
-              <>
-                <div className="dashboard-grid dashboard-grid--organization">
+            <div className="dashboard-content">
+              <div className="dashboard-section" id="access-membership">
+                <div className="section-heading">
+                  <div>
+                    <h2>Access and membership</h2>
+                  </div>
+                </div>
+
+                <div className="dashboard-grid dashboard-grid--organization dashboard-grid--organization-extended">
                   <section className="panel">
                     <p className="panel__label">Organizations in context</p>
                     <h2>{state.organizations.length}</h2>
@@ -944,43 +953,47 @@ function App() {
                       ))}
                     </ul>
                   </section>
+
+                  <section className="panel">
+                    <p className="panel__label">Invite member</p>
+                    <h2>New invitation</h2>
+                    <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
+                      <label>
+                        Email
+                        <input
+                          value={inviteEmail}
+                          onChange={(event) => setInviteEmail(event.target.value)}
+                          type="email"
+                          required
+                        />
+                      </label>
+
+                      <label>
+                        Role
+                        <select
+                          value={inviteRole}
+                          onChange={(event) => setInviteRole(event.target.value as "admin" | "user")}
+                        >
+                          <option value="user">user</option>
+                          <option value="admin">admin</option>
+                        </select>
+                      </label>
+
+                      <button type="submit" disabled={submitting || !isOrgAdmin}>
+                        {submitting ? "Saving..." : "Create invitation"}
+                      </button>
+                    </form>
+                  </section>
                 </div>
-                {isMobileLayout ? (
-                  <button
-                    type="button"
-                    className="section-toggle section-toggle--footer"
-                    aria-expanded={showOrganizationSection}
-                    onClick={() => toggleMobileSection("organization")}
-                  >
-                    Close
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-
-          <div className="dashboard-section">
-            <div className="section-heading">
-              <div>
-                <p className="panel__label">DNS</p>
-                <h2>Zones and records</h2>
               </div>
-              <div className="section-heading__actions">
-                {showDnsHeaderToggle ? (
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    aria-expanded={showDnsSection}
-                    onClick={() => toggleMobileSection("dns")}
-                  >
-                    Open
-                  </button>
-                ) : null}
-              </div>
-            </div>
 
-            {showDnsSection ? (
-              <>
+              <div className="dashboard-section" id="zones-records">
+                <div className="section-heading">
+                  <div>
+                    <h2>Zones and records</h2>
+                  </div>
+                </div>
+
                 <div className="dashboard-grid dashboard-grid--dns">
                   <section className="panel dns-panel dns-panel--zones">
                     <div className="panel__header">
@@ -1064,265 +1077,108 @@ function App() {
                     ) : null}
                   </section>
                 </div>
-                {isMobileLayout ? (
-                  <button
-                    type="button"
-                    className="section-toggle section-toggle--footer"
-                    aria-expanded={showDnsSection}
-                    onClick={() => toggleMobileSection("dns")}
-                  >
-                    Close
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-
-          <div className="dashboard-section">
-            <div className="section-heading">
-              <div>
-                <p className="panel__label">Actions</p>
-                <h2>Create and manage</h2>
               </div>
-              <div className="section-heading__actions">
-                {showActionsHeaderToggle ? (
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    aria-expanded={showActionsSection}
-                    onClick={() => toggleMobileSection("actions")}
-                  >
-                    Open
-                  </button>
-                ) : null}
-              </div>
-            </div>
 
-            {showActionsSection ? (
-              <>
-                <div className="dashboard-grid dashboard-grid--actions">
+              <div className="dashboard-section" id="create-manage">
+                <div className="section-heading">
+                  <div>
+                    <h2>Create and manage</h2>
+                  </div>
+                </div>
+
+                <div className="dashboard-grid dashboard-grid--actions dashboard-grid--actions-compact">
                   <section className="panel action-panel">
-                    <div className="panel__header">
-                      <div>
-                        <p className="panel__label">Create DNS zone</p>
-                        <h2>New zone</h2>
-                      </div>
-                      {showZonePanelHeaderToggle ? (
-                        <button
-                          type="button"
-                          className="section-toggle"
-                          aria-expanded={showZoneActionPanel}
-                          onClick={() => toggleMobileActionPanel("zone")}
-                        >
-                          Open
-                        </button>
-                      ) : null}
-                    </div>
-                    {showZoneActionPanel ? (
-                      <>
-                        <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
-                          <label>
-                            Zone name
-                            <input
-                              value={zoneName}
-                              onChange={(event) => setZoneName(event.target.value)}
-                              type="text"
-                              required
-                            />
-                          </label>
+                    <form className="form" onSubmit={(event) => void handleZoneSubmit(event)}>
+                      <p className="panel__label">Create DNS zone</p>
+                      <h2>New zone</h2>
+                      <label>
+                        Zone name
+                        <input
+                          value={zoneName}
+                          onChange={(event) => setZoneName(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-                          <button type="submit" disabled={creatingZone || !isOrgAdmin}>
-                            {creatingZone ? "Creating..." : "Create zone"}
-                          </button>
-                        </form>
-                        {isMobileLayout ? (
-                          <button
-                            type="button"
-                            className="section-toggle section-toggle--footer"
-                            aria-expanded={showZoneActionPanel}
-                            onClick={() => toggleMobileActionPanel("zone")}
-                          >
-                            Close
-                          </button>
-                        ) : null}
-                      </>
-                    ) : null}
+                      <button type="submit" disabled={creatingZone || !isOrgAdmin}>
+                        {creatingZone ? "Creating..." : "Create zone"}
+                      </button>
+                    </form>
                   </section>
 
                   <section className="panel action-panel">
-                    <div className="panel__header">
-                      <div>
-                        <p className="panel__label">Create DNS record</p>
-                        <h2>New record</h2>
-                      </div>
-                      {showRecordPanelHeaderToggle ? (
-                        <button
-                          type="button"
-                          className="section-toggle"
-                          aria-expanded={showRecordActionPanel}
-                          onClick={() => toggleMobileActionPanel("record")}
+                    <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
+                      <p className="panel__label">Create DNS record</p>
+                      <h2>New record</h2>
+                      <label>
+                        Zone
+                        <select
+                          value={selectedZoneId}
+                          onChange={(event) => setSelectedZoneId(event.target.value)}
                         >
-                          Open
-                        </button>
-                      ) : null}
-                    </div>
-                    {showRecordActionPanel ? (
-                      <>
-                        <form className="form" onSubmit={(event) => void handleRecordSubmit(event)}>
-                          <label>
-                            Zone
-                            <select
-                              value={selectedZoneId}
-                              onChange={(event) => setSelectedZoneId(event.target.value)}
-                            >
-                              <option value="">Select zone</option>
-                              {state.zones.map((zone) => (
-                                <option key={zone.id} value={zone.id}>
-                                  {zone.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          <option value="">Select zone</option>
+                          {state.zones.map((zone) => (
+                            <option key={zone.id} value={zone.id}>
+                              {zone.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                          <label>
-                            Name
-                            <input
-                              value={recordName}
-                              onChange={(event) => setRecordName(event.target.value)}
-                              type="text"
-                              required
-                            />
-                          </label>
+                      <label>
+                        Name
+                        <input
+                          value={recordName}
+                          onChange={(event) => setRecordName(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-                          <label>
-                            Type
-                            <select
-                              value={recordType}
-                              onChange={(event) => setRecordType(event.target.value)}
-                            >
-                              <option value="A">A</option>
-                              <option value="AAAA">AAAA</option>
-                              <option value="CNAME">CNAME</option>
-                              <option value="TXT">TXT</option>
-                              <option value="MX">MX</option>
-                            </select>
-                          </label>
-
-                          <label>
-                            Content
-                            <input
-                              value={recordContent}
-                              onChange={(event) => setRecordContent(event.target.value)}
-                              type="text"
-                              required
-                            />
-                          </label>
-
-                          <label>
-                            TTL
-                            <input
-                              value={recordTtl}
-                              onChange={(event) => setRecordTtl(event.target.value)}
-                              type="number"
-                              min="1"
-                              required
-                            />
-                          </label>
-
-                          <button
-                            type="submit"
-                            disabled={savingRecord || !isOrgAdmin || !selectedZoneId}
-                          >
-                            {savingRecord ? "Saving..." : "Create record"}
-                          </button>
-                        </form>
-                        {isMobileLayout ? (
-                          <button
-                            type="button"
-                            className="section-toggle section-toggle--footer"
-                            aria-expanded={showRecordActionPanel}
-                            onClick={() => toggleMobileActionPanel("record")}
-                          >
-                            Close
-                          </button>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </section>
-
-                  <section className="panel action-panel">
-                    <div className="panel__header">
-                      <div>
-                        <p className="panel__label">Create invitation</p>
-                        <h2>Invite member</h2>
-                      </div>
-                      {showInvitePanelHeaderToggle ? (
-                        <button
-                          type="button"
-                          className="section-toggle"
-                          aria-expanded={showInviteActionPanel}
-                          onClick={() => toggleMobileActionPanel("invite")}
+                      <label>
+                        Type
+                        <select
+                          value={recordType}
+                          onChange={(event) => setRecordType(event.target.value)}
                         >
-                          Open
-                        </button>
-                      ) : null}
-                    </div>
-                    {showInviteActionPanel ? (
-                      <>
-                        <form className="form" onSubmit={(event) => void handleInviteSubmit(event)}>
-                          <label>
-                            Email
-                            <input
-                              value={inviteEmail}
-                              onChange={(event) => setInviteEmail(event.target.value)}
-                              type="email"
-                              required
-                            />
-                          </label>
+                          <option value="A">A</option>
+                          <option value="AAAA">AAAA</option>
+                          <option value="CNAME">CNAME</option>
+                          <option value="TXT">TXT</option>
+                          <option value="MX">MX</option>
+                        </select>
+                      </label>
 
-                          <label>
-                            Role
-                            <select
-                              value={inviteRole}
-                              onChange={(event) =>
-                                setInviteRole(event.target.value as "admin" | "user")
-                              }
-                            >
-                              <option value="user">user</option>
-                              <option value="admin">admin</option>
-                            </select>
-                          </label>
+                      <label>
+                        Content
+                        <input
+                          value={recordContent}
+                          onChange={(event) => setRecordContent(event.target.value)}
+                          type="text"
+                          required
+                        />
+                      </label>
 
-                          <button type="submit" disabled={submitting || !isOrgAdmin}>
-                            {submitting ? "Saving..." : "Create invitation"}
-                          </button>
-                        </form>
-                        {isMobileLayout ? (
-                          <button
-                            type="button"
-                            className="section-toggle section-toggle--footer"
-                            aria-expanded={showInviteActionPanel}
-                            onClick={() => toggleMobileActionPanel("invite")}
-                          >
-                            Close
-                          </button>
-                        ) : null}
-                      </>
-                    ) : null}
+                      <label>
+                        TTL
+                        <input
+                          value={recordTtl}
+                          onChange={(event) => setRecordTtl(event.target.value)}
+                          type="number"
+                          min="1"
+                          required
+                        />
+                      </label>
+
+                      <button type="submit" disabled={savingRecord || !isOrgAdmin || !selectedZoneId}>
+                        {savingRecord ? "Saving..." : "Create record"}
+                      </button>
+                    </form>
                   </section>
                 </div>
-                {isMobileLayout ? (
-                  <button
-                    type="button"
-                    className="section-toggle section-toggle--footer"
-                    aria-expanded={showActionsSection}
-                    onClick={() => toggleMobileSection("actions")}
-                  >
-                    Close
-                  </button>
-                ) : null}
-              </>
-            ) : null}
+              </div>
+            </div>
           </div>
         </>
       ) : null}
