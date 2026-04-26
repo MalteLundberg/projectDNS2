@@ -300,8 +300,18 @@ h1 {
   display: block;
 }
 
+.list__item > :first-child {
+  min-width: 0;
+}
+
 .list__item p {
   margin: 0.25rem 0 0;
+}
+
+.list__item code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .member-summary {
@@ -457,9 +467,41 @@ h1 {
   min-height: 100%;
 }
 
+@media (max-width: 960px) {
+  .app-shell {
+    width: min(1180px, calc(100% - 1.5rem));
+    padding-top: 3.25rem;
+    padding-bottom: 4rem;
+  }
+
+  .dashboard-grid--organization {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid--actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid--dns {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    align-items: start;
+  }
+
+  .panel__header,
+  .auth-panel-secondary__header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 720px) {
   .app-shell {
+    width: min(100% - 1rem, 100%);
     padding-top: 3rem;
+    padding-bottom: 3.5rem;
   }
 
   .hero {
@@ -484,6 +526,22 @@ h1 {
     align-items: start;
   }
 
+  .panel,
+  .status-card {
+    padding: 1rem;
+    border-radius: 18px;
+  }
+
+  .panel__header,
+  .auth-panel-secondary__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .section-tag {
+    align-self: flex-start;
+  }
+
   .status-grid,
   .dashboard-grid,
   .dashboard-grid--organization,
@@ -497,7 +555,57 @@ h1 {
     align-items: flex-start;
   }
 
+  .list__item {
+    flex-direction: column;
+  }
+
+  .zone-list-item {
+    gap: 0.85rem;
+  }
+
   .actions-row {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .actions-row--member,
+  .context-strip__actions {
+    width: 100%;
+  }
+
+  .actions-row--member > *,
+  .context-strip__actions > *,
+  .list__item > .secondary-button {
+    width: 100%;
+  }
+
+  .role-select,
+  .secondary-button {
+    min-height: 44px;
+  }
+
+  .role-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .secondary-button,
+  .form button {
+    width: 100%;
+  }
+
+  .form input,
+  .form select,
+  .inline-field select {
+    min-height: 44px;
+  }
+
+  .auth-panel-secondary {
+    max-width: none;
+  }
+
+  .intro,
+  .section-subtitle {
+    max-width: none;
   }
 }
