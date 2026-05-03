@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { RecordList } from "./components/RecordList";
+import { ZoneList } from "./components/ZoneList";
+import { getErrorMessage, requestJson, splitErrorMessageParts } from "./lib/api-client";
+import { getEditableRecordName } from "./lib/records";
 
 type Organization = {
   id: string;
@@ -86,27 +90,6 @@ function isInvitationForCurrentUser(
   return invitation.email.toLowerCase() === (currentUser?.email ?? "").toLowerCase();
 }
 
-async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    credentials: "include",
-    ...init,
-  });
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (!contentType.includes("application/json")) {
-    const text = await response.text();
-    throw new Error(`Expected JSON but received: ${text.slice(0, 120)}`);
-  }
-
-  const data = (await response.json()) as T & { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? `Request failed with status ${response.status}`);
-  }
-
-  return data;
-}
-
 function App() {
   const [state, setState] = useState<DashboardState>({
     loading: true,
@@ -135,6 +118,13 @@ function App() {
   const [recordTtl, setRecordTtl] = useState("3600");
   const [savingRecord, setSavingRecord] = useState(false);
   const [deletingRecordKey, setDeletingRecordKey] = useState<string | null>(null);
+  const [deletingZoneId, setDeletingZoneId] = useState<string | null>(null);
+  const [editingRecordKey, setEditingRecordKey] = useState<string | null>(null);
+  const [editingRecordName, setEditingRecordName] = useState("@");
+  const [editingRecordType, setEditingRecordType] = useState("A");
+  const [editingRecordContent, setEditingRecordContent] = useState("");
+  const [editingRecordTtl, setEditingRecordTtl] = useState("3600");
+  const [savingEditedRecord, setSavingEditedRecord] = useState(false);
   const [loginEmail, setLoginEmail] = useState("test@example.com");
   const [loginName, setLoginName] = useState("Test User");
   const [sendingLoginLink, setSendingLoginLink] = useState(false);
@@ -146,6 +136,7 @@ function App() {
   const [creatingOrganization, setCreatingOrganization] = useState(false);
   const [activeSection, setActiveSection] = useState<DashboardSectionKey>("zones-records");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const errorParts = splitErrorMessageParts(state.error);
 
   async function loadDashboard() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -188,7 +179,13 @@ function App() {
         ]);
 
       setActiveOrganizationId(activeOrganization.id);
-      setSelectedZoneId((current) => current || zonesResponse.zones[0]?.id || "");
+      setSelectedZoneId((current) => {
+        if (current && zonesResponse.zones.some((zone) => zone.id === current)) {
+          return current;
+        }
+
+        return zonesResponse.zones[0]?.id || "";
+      });
       setState({
         loading: false,
         currentUser: sessionResponse.currentUser,
@@ -207,7 +204,7 @@ function App() {
         members: [],
         invitations: [],
         zones: [],
-        error: error instanceof Error ? error.message : "Unknown dashboard error",
+        error: getErrorMessage(error),
       });
     }
   }
@@ -251,7 +248,7 @@ function App() {
         setRecords([]);
         setState((current) => ({
           ...current,
-          error: error instanceof Error ? error.message : "Unknown record loading error",
+          error: getErrorMessage(error),
         }));
       } finally {
         setRecordsLoading(false);
@@ -299,7 +296,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown invitation error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setSubmitting(false);
@@ -333,7 +330,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown login error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setSendingLoginLink(false);
@@ -351,7 +348,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown logout error",
+        error: getErrorMessage(error),
       }));
     }
   }
@@ -375,7 +372,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown supervisor login error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setSigningInSupervisor(false);
@@ -396,7 +393,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown onboarding error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setCreatingOrganization(false);
@@ -424,7 +421,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown zone creation error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setCreatingZone(false);
@@ -462,7 +459,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown record create error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setSavingRecord(false);
@@ -489,10 +486,99 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown record delete error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setDeletingRecordKey(null);
+    }
+  }
+
+  async function handleDeleteZone(zone: Zone) {
+    if (!window.confirm(`Delete zone ${zone.name}? This removes it from PowerDNS and the app.`)) {
+      return;
+    }
+
+    setDeletingZoneId(zone.id);
+
+    try {
+      await requestJson<{ ok: boolean; zone: { id: string } }>(`/api/zones/${zone.id}`, {
+        method: "DELETE",
+      });
+
+      if (selectedZoneId === zone.id) {
+        setSelectedZoneId("");
+        setRecords([]);
+      }
+
+      await loadDashboard();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: getErrorMessage(error),
+      }));
+    } finally {
+      setDeletingZoneId(null);
+    }
+  }
+
+  function startRecordEdit(rrset: RecordRow, content: string) {
+    const key = `${rrset.name}:${rrset.type}:${content}`;
+    setEditingRecordKey(key);
+    setEditingRecordName(getEditableRecordName(rrset.name, selectedZone?.name ?? ""));
+    setEditingRecordType(rrset.type);
+    setEditingRecordContent(content);
+    setEditingRecordTtl(String(rrset.ttl));
+  }
+
+  function cancelRecordEdit() {
+    setEditingRecordKey(null);
+    setEditingRecordName("@");
+    setEditingRecordType("A");
+    setEditingRecordContent("");
+    setEditingRecordTtl("3600");
+  }
+
+  async function handleRecordEditSubmit(
+    event: FormEvent<HTMLFormElement>,
+    currentName: string,
+    currentType: string,
+    currentContent: string,
+  ) {
+    event.preventDefault();
+
+    if (!selectedZoneId) {
+      return;
+    }
+
+    setSavingEditedRecord(true);
+
+    try {
+      const response = await requestJson<{ ok: boolean; rrsets: RecordRow[] }>(
+        `/api/zones/${selectedZoneId}/records`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            currentName,
+            currentType,
+            currentContent,
+            name: editingRecordName,
+            type: editingRecordType,
+            content: editingRecordContent,
+            ttl: Number(editingRecordTtl),
+          }),
+        },
+      );
+
+      setRecords(response.rrsets);
+      cancelRecordEdit();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: getErrorMessage(error),
+      }));
+    } finally {
+      setSavingEditedRecord(false);
     }
   }
 
@@ -512,7 +598,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown organization change error",
+        error: getErrorMessage(error),
       }));
     }
   }
@@ -531,7 +617,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown revoke invitation error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setRevokingInvitationId(null);
@@ -552,7 +638,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown accept invitation error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setAcceptingInvitationId(null);
@@ -579,7 +665,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown member update error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setUpdatingMemberId(null);
@@ -604,7 +690,7 @@ function App() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Unknown member removal error",
+        error: getErrorMessage(error),
       }));
     } finally {
       setRemovingMemberId(null);
@@ -636,7 +722,13 @@ function App() {
         </div>
       ) : null}
 
-      {state.error ? <p className="banner banner--error">{state.error}</p> : null}
+      {state.error ? (
+        <div className="banner banner--error error-banner" role="alert">
+          <strong>{errorParts.message}</strong>
+          {errorParts.code ? <p>Error code: {errorParts.code}</p> : null}
+          {errorParts.details ? <pre>{errorParts.details}</pre> : null}
+        </div>
+      ) : null}
       {state.loading ? <p className="banner">Loading dashboard...</p> : null}
 
       {!state.loading && !state.currentUser ? (
@@ -993,83 +1085,37 @@ function App() {
 
                 {activeSection === "zones-records" ? (
                   <div className="dashboard-grid dashboard-grid--dns">
-                    <section className="panel dns-panel dns-panel--zones">
-                      <div className="panel__header">
-                        <h3>Zones</h3>
-                        <span className="section-tag">{isOrgAdmin ? "Admin can edit" : "Read only"}</span>
-                      </div>
-                      <ul className="list">
-                        {state.zones.length === 0 ? (
-                          <li className="empty-state">No zones created yet.</li>
-                        ) : null}
-                        {state.zones.map((zone) => (
-                          <li
-                            key={zone.id}
-                            className={`list__item zone-list-item${selectedZoneId === zone.id ? " zone-list-item--selected" : ""}`}
-                          >
-                            <div>
-                              <strong>{zone.name}</strong>
-                              <p>{zone.provider}</p>
-                              <code>{zone.powerdnsZoneId}</code>
-                            </div>
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => setSelectedZoneId(zone.id)}
-                            >
-                              {selectedZoneId === zone.id ? "Selected" : "Open records"}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
+                    <ZoneList
+                      zones={state.zones}
+                      selectedZoneId={selectedZoneId}
+                      isOrgAdmin={isOrgAdmin}
+                      deletingZoneId={deletingZoneId}
+                      onSelectZone={setSelectedZoneId}
+                      onDeleteZone={handleDeleteZone}
+                    />
 
-                    <section className="panel dns-panel dns-panel--records">
-                      <h3>{selectedZone?.name ?? "Select a zone"}</h3>
-                      <p className="section-subtitle">
-                        {selectedZone
-                          ? "Records are loaded directly from PowerDNS for the selected zone."
-                          : "Choose a zone to inspect and manage its records."}
-                      </p>
-                      {recordsLoading ? <p>Loading records...</p> : null}
-                      {!recordsLoading && selectedZoneId ? (
-                        <ul className="list">
-                          {records.flatMap((rrset) =>
-                            rrset.records.map((record) => {
-                              const key = `${rrset.name}:${rrset.type}:${record.content}`;
-
-                              return (
-                                <li key={key} className="list__item">
-                                  <div>
-                                    <strong>
-                                      {rrset.name} {rrset.type}
-                                    </strong>
-                                    <p>
-                                      TTL {rrset.ttl} • {record.content}
-                                    </p>
-                                  </div>
-                                  {isOrgAdmin ? (
-                                    <button
-                                      type="button"
-                                      className="secondary-button"
-                                      onClick={() =>
-                                        void handleDeleteRecord(rrset.name, rrset.type, record.content)
-                                      }
-                                      disabled={deletingRecordKey === key}
-                                    >
-                                      {deletingRecordKey === key ? "Deleting..." : "Delete"}
-                                    </button>
-                                  ) : null}
-                                </li>
-                              );
-                            }),
-                          )}
-                        </ul>
-                      ) : null}
-                      {!recordsLoading && selectedZoneId && records.length === 0 ? (
-                        <p className="empty-state">No records found for the selected zone.</p>
-                      ) : null}
-                    </section>
+                    <RecordList
+                      selectedZoneName={selectedZone?.name ?? null}
+                      selectedZoneId={selectedZoneId}
+                      recordsLoading={recordsLoading}
+                      records={records}
+                      isOrgAdmin={isOrgAdmin}
+                      editingRecordKey={editingRecordKey}
+                      editingRecordName={editingRecordName}
+                      editingRecordType={editingRecordType}
+                      editingRecordContent={editingRecordContent}
+                      editingRecordTtl={editingRecordTtl}
+                      savingEditedRecord={savingEditedRecord}
+                      deletingRecordKey={deletingRecordKey}
+                      onStartRecordEdit={startRecordEdit}
+                      onCancelRecordEdit={cancelRecordEdit}
+                      onDeleteRecord={handleDeleteRecord}
+                      onRecordEditSubmit={handleRecordEditSubmit}
+                      setEditingRecordName={setEditingRecordName}
+                      setEditingRecordType={setEditingRecordType}
+                      setEditingRecordContent={setEditingRecordContent}
+                      setEditingRecordTtl={setEditingRecordTtl}
+                    />
                   </div>
                 ) : null}
 

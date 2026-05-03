@@ -13,6 +13,7 @@ import organizationMembersHandler from "../server/routes/organizations/[id]/memb
 import organizationsHandler from "../server/routes/organizations/index.js";
 import sessionHandler from "../server/routes/session.js";
 import activeOrganizationHandler from "../server/routes/session/active-organization.js";
+import zoneDetailHandler from "../server/routes/zones/[id]/index.js";
 import zoneRecordsHandler from "../server/routes/zones/[id]/records.js";
 import zonesHandler from "../server/routes/zones/index.js";
 
@@ -85,6 +86,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (zoneRecordsMatch) {
     await zoneRecordsHandler(routeWithId(req, zoneRecordsMatch[1]), res);
+    return;
+  }
+
+  const zoneDetailMatch = pathname.match(/^\/api\/zones\/([^/]+)$/);
+
+  if (zoneDetailMatch) {
+    await zoneDetailHandler(routeWithId(req, zoneDetailMatch[1]), res);
     return;
   }
 

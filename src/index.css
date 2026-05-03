@@ -338,6 +338,23 @@ h1 {
   color: #fecaca;
 }
 
+.error-banner {
+  white-space: pre-wrap;
+}
+
+.error-banner p,
+.error-banner pre {
+  margin: 0.5rem 0 0;
+}
+
+.error-banner pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: rgba(6, 12, 23, 0.72);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 .list {
   list-style: none;
   padding: 0;
@@ -496,6 +513,10 @@ h1 {
   gap: 0.7rem;
 }
 
+.actions-row--dns {
+  align-items: flex-start;
+}
+
 .role-select {
   min-width: 128px;
   appearance: none;
@@ -542,12 +563,25 @@ h1 {
   cursor: wait;
 }
 
+.secondary-button--danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+}
+
 .secondary-button--block {
   width: 100%;
 }
 
 .dns-panel {
   min-height: 100%;
+}
+
+.record-item {
+  width: 100%;
+}
+
+.record-edit-form {
+  margin-top: 0.85rem;
 }
 
 @media (max-width: 960px) {

@@ -30,6 +30,7 @@ export type ZoneErrorCode =
   | "POWERDNS_AUTH_FAILED"
   | "POWERDNS_UNREACHABLE"
   | "POWERDNS_REQUEST_FAILED"
+  | "POWERDNS_ZONE_DELETE_FAILED"
   | "DNS_ZONE_SAVE_FAILED";
 
 export class ZoneApiError extends Error {
@@ -166,4 +167,18 @@ export async function patchZoneRecords(zoneId: string, rrsets: PowerDnsRrset[]) 
     method: "PATCH",
     body: JSON.stringify({ rrsets }),
   });
+}
+
+export async function deleteZone(zoneId: string) {
+  try {
+    return await powerDnsRequest(`/zones/${encodeURIComponent(zoneId)}`, {
+      method: "DELETE",
+    });
+  } catch (error) {
+    if (error instanceof ZoneApiError) {
+      throw new ZoneApiError("POWERDNS_ZONE_DELETE_FAILED", error.message, error.details);
+    }
+
+    throw error;
+  }
 }
